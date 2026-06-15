@@ -29,6 +29,7 @@
 $ProjectRoot = ""        # empty => folder this script sits in
 $MainScriptPath = ""     # empty => newest Multi-LLM-Prompter-v*.ps1 in $ProjectRoot
 $HelperScriptPath = ""   # empty => newest Multi-LLM-RunReviewHelper-v*.ps1 in $ProjectRoot\add
+$BenchmarkScriptPath = "" # empty => newest Multi-LLM-Benchmark-v*.ps1 in $ProjectRoot\add
 
 # -----------------------------
 # INFRASTRUCTURE
@@ -297,10 +298,12 @@ Write-Host "============================================================" -Foreg
 if ([string]::IsNullOrWhiteSpace($ProjectRoot)) { $ProjectRoot = Resolve-ScriptFolder }
 if ([string]::IsNullOrWhiteSpace($MainScriptPath)) { $MainScriptPath = Get-NewestByVersion -Folder $ProjectRoot -Filter "Multi-LLM-Prompter-v*.ps1" }
 if ([string]::IsNullOrWhiteSpace($HelperScriptPath)) { $HelperScriptPath = Get-NewestByVersion -Folder (Join-Path $ProjectRoot "add") -Filter "Multi-LLM-RunReviewHelper-v*.ps1" }
+if ([string]::IsNullOrWhiteSpace($BenchmarkScriptPath)) { $BenchmarkScriptPath = Get-NewestByVersion -Folder (Join-Path $ProjectRoot "add") -Filter "Multi-LLM-Benchmark-v*.ps1" }
 
-Write-Host ("Project root : " + $ProjectRoot) -ForegroundColor Gray
-Write-Host ("Main script  : " + $MainScriptPath) -ForegroundColor Gray
-Write-Host ("Helper script: " + $HelperScriptPath) -ForegroundColor Gray
+Write-Host ("Project root  : " + $ProjectRoot) -ForegroundColor Gray
+Write-Host ("Main script   : " + $MainScriptPath) -ForegroundColor Gray
+Write-Host ("Helper script : " + $HelperScriptPath) -ForegroundColor Gray
+Write-Host ("Benchmark     : " + $BenchmarkScriptPath) -ForegroundColor Gray
 
 if ([string]::IsNullOrWhiteSpace($MainScriptPath) -or -not (Test-Path -LiteralPath $MainScriptPath)) {
     Write-Host "[ERROR] Could not locate the main Multi-LLM-Prompter-v*.ps1. Set `$MainScriptPath." -ForegroundColor Red
@@ -313,6 +316,9 @@ if (-not [string]::IsNullOrWhiteSpace($HelperScriptPath) -and (Test-Path -Litera
 }
 else {
     Add-Result -Section "STATIC: helper" -Name "helper located" -Status "WARN" -Detail "No RunReviewHelper found under add\"
+}
+if (-not [string]::IsNullOrWhiteSpace($BenchmarkScriptPath) -and (Test-Path -LiteralPath $BenchmarkScriptPath)) {
+    Invoke-StaticChecks -Label "STATIC: benchmark" -Path $BenchmarkScriptPath
 }
 Invoke-InvariantChecks -Path $MainScriptPath
 Invoke-BehaviorChecks -Path $MainScriptPath

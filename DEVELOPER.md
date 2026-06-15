@@ -105,7 +105,9 @@ Add/helper folder:
 
 - `add\APIKeys OpenAI-Claude.txt` (gitignored; not committed)
 - `add\Multi-LLM-Gate1-Benchmark-Prompts.csv`
+- `add\Multi-LLM-Benchmark-v0.1.ps1` (Gate-1 benchmark runner over the headless pipeline)
 - `add\Multi-LLM-RunReviewHelper-v0.2.ps1` (run analyzer; v0.1 was broken + flat-layout-only, superseded)
+- `Validate-MultiLLM.ps1` (repo root; pre-delivery validation harness)
 - `add\My Ideas.txt`
 
 ## Generated Files

@@ -109,8 +109,10 @@ and per-task routing overrides are all DONE. Current state:
 
 ## Roadmap
 
-- v0.9: Benchmark mode (Gate1 CSV in `add\Multi-LLM-Gate1-Benchmark-Prompts.csv`); real
-  RunFinalVerifier (a verifier distinct from the judge).
+- v0.9 Benchmark mode (DELIVERED - v0.1 runner): `add\Multi-LLM-Benchmark-v0.1.ps1` drives the
+  headless pipeline over the Gate1 CSV and reports routing accuracy, judge best-answer, and
+  cost/tokens/time (benchmark_results.csv + benchmark_summary.md). DryRun (default) + report-only
+  modes; a live run spends real money. RunFinalVerifier (auto-scoring final-vs-singles) is PENDING.
 - Maintainability (proposed): a Validate-MultiLLM.ps1 harness (parser-check app + helper,
   BOM/CRLF/ASCII/here-string balance, prove frozen functions untouched; optional Pester for
   splitting/routing/cost/judge-markers/config fallback).
@@ -129,3 +131,11 @@ and per-task routing overrides are all DONE. Current state:
   broken (a markdown backtick escaped a closing quote -> 21 parse errors) and assumed the old
   flat output. v0.2 parses clean and understands the Run_*/Task_NN layout, reading answers from
   answers_raw.json and validating judge files only when router_decision.json UseJudge = true.
+- `add\Multi-LLM-Benchmark-v0.1.ps1` (DONE): drives the headless pipeline over the Gate-1 CSV
+  (writes tasks_input.json + the env contract, starts the main script headless), then reports
+  routing accuracy vs ExpectedTaskType, judge best-answer, and cost/tokens/time. Standalone -
+  no changes to the main app. DryRun (default) and report-only modes.
+- `Validate-MultiLLM.ps1` (repo root, DONE): pre-delivery harness - static checks (parse/BOM/
+  CRLF/ASCII/here-strings/no top-level param) for the app + helper + benchmark, invariant checks
+  (judge markers, frozen functions, Full->strong judge), and AST-extracted behavioral tests of
+  the frozen cost/routing functions. Run before every delivery.

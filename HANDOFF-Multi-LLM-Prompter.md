@@ -99,9 +99,11 @@ Project folder: `C:\_Combined\Multi-LLM-Prompter\` (this is the live working cop
   fallback to the legacy fixed path `C:\_Combined\H_Productivity\Multi-LLM-Prompter` (which
   does NOT exist on disk - it is only a fallback). Prefer a file next to the .ps1, then legacy,
   else create next to the .ps1.
-- add\ - dev helpers: Multi-LLM-Gate1-Benchmark-Prompts.csv (v0.9 input),
-  Multi-LLM-RunReviewHelper-v0.2.ps1 (run analyzer; v0.1 was broken + flat-layout-only and is
-  superseded), My Ideas.txt.
+- add\ - dev helpers: Multi-LLM-Gate1-Benchmark-Prompts.csv (benchmark input),
+  Multi-LLM-Benchmark-v0.1.ps1 (Gate-1 benchmark runner; drives the headless pipeline over the
+  CSV and reports routing/cost/judge), Multi-LLM-RunReviewHelper-v0.2.ps1 (single-run analyzer;
+  v0.1 was broken + flat-layout-only and is superseded), My Ideas.txt.
+- Validate-MultiLLM.ps1 (repo root) - pre-delivery validation harness for the app + helpers.
 
 Runtime outputs: `C:\Temp\MultiLLMPrompter\`
 - gui_session.log - persistent GUI log, all sessions appended.
@@ -305,12 +307,17 @@ UIReady; timer stopped + child killed on Closing.
 
 ## 7. ROADMAP
 
-- v0.9: Benchmark mode (Gate1 CSV is in add\Multi-LLM-Gate1-Benchmark-Prompts.csv);
-  RunFinalVerifier real implementation (a verifier distinct from the judge).
-- Maintainability (proposed, not started): a local validation harness (Validate-MultiLLM.ps1)
-  that parser-checks the app + helper, verifies BOM/CRLF/ASCII/here-string balance, and proves
-  the frozen functions are untouched; optionally Pester tests for splitting/routing/cost/judge
-  markers/config fallback.
+- v0.9 Benchmark mode (DELIVERED - v0.1 runner): add\Multi-LLM-Benchmark-v0.1.ps1 drives the
+  headless pipeline over the Gate1 CSV and reports routing accuracy (actual vs ExpectedTaskType),
+  judge best-answer, and cost/tokens/time (benchmark_results.csv + benchmark_summary.md). DryRun
+  (default) and report-only modes; a live run spends real money. The subjective Gate-1 verdict
+  (does the final beat both singles) stays a manual read - auto-scoring it is RunFinalVerifier.
+- v0.9 RunFinalVerifier (PENDING): a verifier distinct from the judge that independently checks
+  the final answer.
+- Validation harness (DELIVERED): Validate-MultiLLM.ps1 parser-checks the app + helper + benchmark,
+  verifies BOM/CRLF/ASCII/here-string balance + no top-level param(), proves the frozen functions
+  are present and behaviorally unchanged (golden cost/routing cases), and checks the judge markers
+  + Full->strong-judge enforcement. Run it before every delivery.
 - Versioning (DECIDED 2026-06-15): release discipline moves into git commits per version
   (commit each version with the changelog entry as the message) instead of accumulating
   versioned .ps1 files. backups\ stays gitignored as a local safety net. Still bump the
