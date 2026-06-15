@@ -1,8 +1,8 @@
 # HANDOFF - Multi-LLM Prompter
 
-Last updated: 2026-06-15
-Current version: **v0.8.52** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_52.ps1` (~9,057 lines, ~397 KB).
+Last updated: 2026-06-16
+Current version: **v0.8.53** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_53.ps1` (~9,153 lines, ~400 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -84,7 +84,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_52.ps1` - ~9,057 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_53.ps1` - ~9,153 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -281,14 +281,19 @@ UIReady; timer stopped + child killed on Closing.
   $null sorts LESS THAN any value, so -lt/-le INCLUDE nulls), re-confirmed backtick-escaping of
   all instruction $ in the four answer/judge prompt blocks, and required the self-check to PASS
   on a clean host. Prompt text only; frozen functions, judge markers, and pipeline unchanged.
+- v0.8.53: Stop now kills the whole backend process tree (Stop-ChildProcessTree: taskkill /T, with
+  a recursive Win32_Process fallback) from the Stop button and the window Closing handler, so a
+  stopped run cannot leave its Start-Job answer/judge grandchildren making in-flight API calls.
+  GUI/teardown only; frozen functions, judge policy, routing, and cost math unchanged.
 
 ---
 
 ## 6. KNOWN ISSUES / WATCH LIST
 
-1. [watch] Stop kills only the child process; Start-Job answer "grandchildren" may finish
-   in-flight API calls (warning logged). A process-tree / job cancellation would close the
-   backlog - worth doing because runs spend real money.
+1. [FIXED v0.8.53] Stop now terminates the whole backend process tree (Stop-ChildProcessTree:
+   taskkill /PID <id> /T /F, with a recursive Win32_Process fallback), wired into the Stop button
+   and the window Closing handler, so a stopped run no longer leaves Start-Job grandchildren making
+   in-flight API calls. Verified against a synthetic parent->children process tree.
 2. [watch] Completeness-warning false positives (markdown endings without punctuation) -
    intentionally unfixed; collecting stats.
 3. [info] Config "Version" lags the script version - harmless by design.

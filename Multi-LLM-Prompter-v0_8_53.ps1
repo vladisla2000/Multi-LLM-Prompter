@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.52 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.53 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.52:
+# Changes through v0.8.53:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -338,6 +338,16 @@
 #       (b) the null-comparison rule now states the REAL PS 5.1 semantics and forbids claiming -lt drops
 #       nulls, and the self-check rule now requires the check to PASS on a clean host (no false "unexpected"
 #       alarms). Prompt text only; frozen functions, the judge marker contract, and pipeline code unchanged.
+#   89. v0.8.53: Stop now terminates the whole backend process tree. Previously Stop (and the window
+#       Closing handler) called $Script:ChildProcess.Kill(), which killed ONLY the hidden child; the
+#       per-answer and judge Start-Job grandchildren (each its own powershell.exe) survived and could
+#       keep their in-flight API calls running until the per-model timeout - i.e. real money spent
+#       AFTER a Stop. New Stop-ChildProcessTree uses taskkill /PID <id> /T /F to kill the child and all
+#       descendants (PS 5.1 has no .Kill($true) tree overload), with a recursive Win32_Process fallback
+#       if taskkill cannot run. Wired into the Stop button and the window Closing handler; the old
+#       "answer jobs may keep their API calls running" warning is replaced with a clear message that the
+#       backend and its model jobs were stopped. GUI/teardown only; frozen functions, judge policy,
+#       routing, and cost math unchanged.
 #
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
@@ -353,7 +363,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.52"
+$ToolVersion = "v0.8.53"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -8706,6 +8716,87 @@ if ($null -ne $Script:Ctl_BtnToggleLog) {
     })
 }
 
+# v0.8.53: recursively kill a process and all of its descendants. Used as the
+# fallback when taskkill is unavailable. Kills leaf processes first, then returns
+# so the caller can kill the root.
+function Stop-DescendantProcesses {
+    param([int]$ParentId)
+
+    if ($ParentId -le 0) {
+        return
+    }
+
+    $Children = @()
+    try {
+        $Children = @(Get-CimInstance -ClassName Win32_Process -Filter ("ParentProcessId = " + $ParentId) -ErrorAction Stop)
+    }
+    catch {
+        $Children = @()
+    }
+
+    foreach ($Child in $Children) {
+        $ChildId = 0
+        try { $ChildId = [int]$Child.ProcessId } catch { $ChildId = 0 }
+        if ($ChildId -gt 0) {
+            Stop-DescendantProcesses -ParentId $ChildId
+            try {
+                Stop-Process -Id $ChildId -Force -ErrorAction SilentlyContinue
+            }
+            catch {
+            }
+        }
+    }
+}
+
+# v0.8.53: terminate the hidden backend child AND its Start-Job grandchildren.
+# Each Start-Job (answer / judge) spawns its own powershell.exe, so killing only
+# the child leaves those jobs running their in-flight API calls until the per-model
+# timeout - real money after a Stop. PS 5.1 has no [Process].Kill($true) tree
+# overload, so shell out to taskkill /T (kills the whole tree); fall back to a
+# Win32_Process tree-walk if taskkill cannot run. Returns $true if the tree was
+# terminated by taskkill.
+function Stop-ChildProcessTree {
+    param([object]$Process)
+
+    if ($null -eq $Process) {
+        return $false
+    }
+
+    $ProcId = 0
+    try { $ProcId = [int]$Process.Id } catch { $ProcId = 0 }
+    if ($ProcId -le 0) {
+        return $false
+    }
+
+    $TreeKilled = $false
+
+    try {
+        $Tk = Start-Process -FilePath "taskkill.exe" -ArgumentList @("/PID", $ProcId, "/T", "/F") -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop
+        if ($null -ne $Tk) {
+            # 0 = terminated; 128 = process not found (already gone). Either way the tree is down.
+            if ($Tk.ExitCode -eq 0 -or $Tk.ExitCode -eq 128) {
+                $TreeKilled = $true
+            }
+        }
+    }
+    catch {
+        $TreeKilled = $false
+    }
+
+    if ($TreeKilled -ne $true) {
+        Stop-DescendantProcesses -ParentId $ProcId
+        try {
+            if ($Process.HasExited -ne $true) {
+                $Process.Kill()
+            }
+        }
+        catch {
+        }
+    }
+
+    return $TreeKilled
+}
+
 $Script:Ctl_BtnStop.Add_Click({
     if ($null -eq $Script:ChildProcess) {
         return
@@ -8713,8 +8804,13 @@ $Script:Ctl_BtnStop.Add_Click({
 
     try {
         if ($Script:ChildProcess.HasExited -ne $true) {
-            $Script:ChildProcess.Kill()
-            Add-GuiLog -Tag "WARN" -Message "Pipeline process was stopped by the user. Note: answer jobs spawned by the backend may keep their API calls running for up to the per-model timeout before exiting."
+            $TreeKilled = Stop-ChildProcessTree -Process $Script:ChildProcess
+            if ($TreeKilled -eq $true) {
+                Add-GuiLog -Tag "WARN" -Message "Run stopped by the user. Terminated the backend process and all of its answer/judge model jobs, so no further API calls will be made."
+            }
+            else {
+                Add-GuiLog -Tag "WARN" -Message "Run stopped by the user. Terminated the backend; if any model job survived it will stop at its per-model timeout."
+            }
         }
     }
     catch {
@@ -8996,7 +9092,7 @@ $GuiWindow.Add_Closing({
     if ($null -ne $Script:ChildProcess) {
         try {
             if ($Script:ChildProcess.HasExited -ne $true) {
-                $Script:ChildProcess.Kill()
+                Stop-ChildProcessTree -Process $Script:ChildProcess | Out-Null
             }
         }
         catch {

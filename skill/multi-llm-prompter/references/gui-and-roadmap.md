@@ -101,8 +101,10 @@ and per-task routing overrides are all DONE. Current state:
 
 - Completeness-warning false positives (markdown endings without punctuation):
   intentionally unfixed, collecting stats.
-- Stop kills only the child; Start-Job grandchildren may finish in-flight calls (warning
-  logged). Process-tree kill would clear the backlog but is not implemented (real money).
+- [FIXED v0.8.53] Stop now kills the whole backend process tree (Stop-ChildProcessTree: taskkill
+  /PID <id> /T /F, with a recursive Win32_Process fallback), wired into the Stop button and the
+  window Closing handler, so a stopped run no longer leaves Start-Job grandchildren making
+  in-flight API calls.
 - Judge cost dominance (~93% on a tiny script) is EXPECTED because Full = Opus; not a bug.
 
 ## Roadmap
