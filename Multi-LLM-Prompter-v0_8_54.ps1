@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.53 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.54 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.53:
+# Changes through v0.8.54:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -348,6 +348,18 @@
 #       "answer jobs may keep their API calls running" warning is replaced with a clear message that the
 #       backend and its model jobs were stopped. GUI/teardown only; frozen functions, judge policy,
 #       routing, and cost math unchanged.
+#   90. v0.8.54: RunFinalVerifier implemented (opt-in; OFF by default). Distinct from the judge:
+#       the judge produces/selects the final answer, the verifier independently re-reads each task's
+#       original prompt + final_answer.md and reports correctness / completeness / unsupported claims
+#       (with the same PS 5.1 + AD pitfalls the prompts enforce). Runs as a gated POST-PASS after the
+#       per-task loop only when $RunFinalVerifier is true (config Behavior.RunFinalVerifier), so default
+#       behavior is byte-identical. New Invoke-AnthropicVerifier (HTTP/retry skeleton cloned from
+#       Invoke-AnthropicJudge, ---VERIFIER_JSON--- marker) + Get-VerifierVerdict parser; writes
+#       Task_NN\final_verification.json + final_verification_summary.json. Verifier model defaults to
+#       the strong judge ($AnthropicModel_JudgeStrong); $VerifierModel/$VerifierMaxTokens override it.
+#       Frozen functions, judge marker contract, routing, and cost math unchanged. NOTE: the verifier
+#       LLM call path is not yet live-tested (no keys in the build env); the parser and the off-by-
+#       default gating are validated.
 #
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
@@ -363,7 +375,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.53"
+$ToolVersion = "v0.8.54"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -529,6 +541,8 @@ else {
     $ConfigPath = $ConfigPathLocal
 }
 $RunFinalVerifier               = $false
+$VerifierModel                  = ""            # v0.8.54: empty -> use the strong judge model for the final verifier
+$VerifierMaxTokens              = 1500          # v0.8.54: verifier returns a small JSON verdict only
 $TaskSplitterMode               = "Heuristic"   # None / Heuristic / LLM (LLM falls back to Heuristic in v0.8.52)
 $TaskWorkMode                   = "Auto"        # Auto / Review / Script
 $UiCodeAutoWorkMode             = "Review"      # Review / Script. Used only when TaskWorkMode = Auto
@@ -631,7 +645,7 @@ if ($UseConfigFile -eq $true) {
                     CodeTriggersOverrideDocumentation = $CodeTriggersOverrideDocumentation
                     RunFinalVerifier                  = $RunFinalVerifier
                     UseCheapJudgeForReview            = $UseCheapJudgeForReview
-                    RunFinalVerifierStatus            = "Reserved/no-op in v0.8.52"
+                    RunFinalVerifierStatus            = "Implemented as a post-pass in v0.8.54"
                     TaskSplitterMode                  = $TaskSplitterMode
                     TaskWorkMode                      = $TaskWorkMode
                     UiCodeAutoWorkMode                = $UiCodeAutoWorkMode
@@ -3322,6 +3336,247 @@ If there is no better prompt, write: No improved prompt.
 
 
 # -----------------------------
+# FINAL VERIFIER - v0.8.54 (distinct from the judge; opt-in)
+# -----------------------------
+
+# Independently checks ONE final answer against the original task. The HTTP/retry skeleton
+# mirrors Invoke-AnthropicJudge exactly; only the prompts + marker differ. The verdict JSON
+# is returned in .Text (parse it with Get-VerifierVerdict).
+function Invoke-AnthropicVerifier {
+    param(
+        [string]$PromptText,
+        [string]$FinalAnswer,
+        [string]$VerifierModel,
+        [string]$ApiKey,
+        [string]$Url,
+        [string]$Version,
+        [string]$Proxy,
+        [int]$MaxTokens,
+        [int]$TimeoutSec,
+        [int]$Retries
+    )
+
+    $Headers = @{
+        "x-api-key"         = $ApiKey
+        "anthropic-version" = $Version
+        "Content-Type"      = "application/json"
+    }
+
+    $SystemPrompt = @"
+You are the Final Verifier in a Multi-LLM Prompter. You are NOT the judge and you do not
+rewrite the answer. You independently check ONE final answer against the original task.
+
+Check for:
+1. technical correctness - does it actually do what the task asked, without errors
+2. completeness - are all parts of the task covered
+3. unsupported claims - statements asserted as fact that are not justified
+4. PowerShell 5.1 / Active Directory pitfalls, including:
+   - never piping Format-Table output into Export-Csv
+   - wrapping pipeline output with @() before using .Count
+   - treating a null LastLogonDate as never-logged-in with (`$null -eq `$_.LastLogonDate); in
+     Windows PowerShell 5.1 `$null sorts as less than any value, so `$null -lt and `$null -le
+     return `$true and a plain -lt cutoff filter INCLUDES nulls (it does NOT drop never-logged-in
+     accounts) - flag any claim that -lt excludes nulls
+   - including DistinguishedName in Active Directory inventory output
+   - creating output folders with New-Item -ItemType Directory -Force
+   - using return rather than Exit in ISE scripts
+   - ASCII-only output
+
+Return ONLY the marker and a single small clean JSON object. No Markdown, no code blocks,
+no text outside the JSON. Use ASCII only.
+
+---VERIFIER_JSON---
+{
+  "verified": true,
+  "confidence": "high",
+  "issues": ["short issue text"],
+  "unsupported_claims": ["short claim text"],
+  "missing_points": ["short missing item"],
+  "summary": "one short sentence"
+}
+"@
+
+    $UserPrompt = @"
+ORIGINAL TASK:
+$PromptText
+
+FINAL ANSWER TO VERIFY:
+$FinalAnswer
+
+Return exactly the ---VERIFIER_JSON--- marker followed by the JSON object described above.
+Set "verified" to false if there is any real correctness or completeness problem. Keep every
+list short and use empty lists when there is nothing to report.
+"@
+
+    $BodyObject = [ordered]@{
+        model      = $VerifierModel
+        max_tokens = $MaxTokens
+        system     = $SystemPrompt
+        messages   = @(
+            [ordered]@{
+                role    = "user"
+                content = $UserPrompt
+            }
+        )
+    }
+
+    $BodyJson = $BodyObject | ConvertTo-Json -Depth 25
+
+    $Attempt = 0
+    $LastError = ""
+    $LastStatusCode = $null
+    $RequestStarted = Get-Date
+
+    while ($Attempt -le $Retries) {
+        $Attempt++
+
+        try {
+            $Params = @{
+                Uri         = $Url
+                Method      = "Post"
+                Headers     = $Headers
+                Body        = $BodyJson
+                TimeoutSec  = $TimeoutSec
+                ErrorAction = "Stop"
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($Proxy)) {
+                $Params.Proxy = $Proxy
+            }
+
+            $Response = Invoke-RestMethod @Params
+            $Text = Get-AnthropicTextFromResponse -ResponseObject $Response
+
+            $DurationSeconds = [Math]::Round(((Get-Date) - $RequestStarted).TotalSeconds, 2)
+
+            $InputTokens = $null
+            $OutputTokens = $null
+            $TotalTokens = $null
+
+            if ($null -ne $Response.usage) {
+                if ($null -ne $Response.usage.input_tokens) { $InputTokens = $Response.usage.input_tokens }
+                if ($null -ne $Response.usage.output_tokens) { $OutputTokens = $Response.usage.output_tokens }
+                if ($null -ne $InputTokens -and $null -ne $OutputTokens) { $TotalTokens = $InputTokens + $OutputTokens }
+            }
+
+            return [PSCustomObject]@{
+                Provider         = "Anthropic"
+                Model            = $VerifierModel
+                Success          = $true
+                Attempt          = $Attempt
+                DurationSeconds  = $DurationSeconds
+                StatusCode       = 200
+                InputTokens      = $InputTokens
+                OutputTokens     = $OutputTokens
+                TotalTokens      = $TotalTokens
+                EstimatedCostUsd = $null
+                Mode             = "Verifier"
+                Text             = $Text
+                Error            = ""
+                Raw              = $Response
+            }
+        }
+        catch {
+            $LastError = $_.Exception.Message
+
+            $ErrorBody = Get-HttpErrorBody -ErrorRecord $_
+            if (-not [string]::IsNullOrWhiteSpace($ErrorBody)) {
+                $LastError = $LastError + " | ResponseBody: " + $ErrorBody
+            }
+
+            $StatusCode = $null
+            if ($null -ne $_.Exception.Response) {
+                try {
+                    $StatusCode = [int]$_.Exception.Response.StatusCode
+                    $LastStatusCode = $StatusCode
+                }
+                catch {
+                    $StatusCode = $null
+                }
+            }
+
+            $ShouldRetry = $false
+            if ($null -eq $StatusCode) {
+                $ShouldRetry = $true
+            }
+            else {
+                if ($StatusCode -eq 429 -or $StatusCode -eq 500 -or $StatusCode -eq 502 -or $StatusCode -eq 503 -or $StatusCode -eq 504) {
+                    $ShouldRetry = $true
+                }
+            }
+
+            if ($ShouldRetry -eq $false) { break }
+            if ($Attempt -le $Retries) { Start-Sleep -Seconds 2 }
+        }
+    }
+
+    $DurationSeconds = [Math]::Round(((Get-Date) - $RequestStarted).TotalSeconds, 2)
+
+    return [PSCustomObject]@{
+        Provider         = "Anthropic"
+        Model            = $VerifierModel
+        Success          = $false
+        Attempt          = $Attempt
+        DurationSeconds  = $DurationSeconds
+        StatusCode       = $LastStatusCode
+        InputTokens      = $null
+        OutputTokens     = $null
+        TotalTokens      = $null
+        EstimatedCostUsd = $null
+        Mode             = "Verifier"
+        Text             = ""
+        Error            = $LastError
+        Raw              = $null
+    }
+}
+
+# Parse the verifier's ---VERIFIER_JSON--- block defensively into a normalized verdict.
+function Get-VerifierVerdict {
+    param([string]$Text)
+
+    $Result = [PSCustomObject]@{
+        verified           = $null
+        confidence         = ""
+        issues             = @()
+        unsupported_claims = @()
+        missing_points     = @()
+        summary            = ""
+        parsed             = $false
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $Result }
+
+    $Json = $Text
+    $Marker = "---VERIFIER_JSON---"
+    $Idx = $Text.IndexOf($Marker)
+    if ($Idx -ge 0) { $Json = $Text.Substring($Idx + $Marker.Length) }
+    $Json = $Json.Trim()
+
+    # Trim to the outermost JSON object if there is any wrapping text.
+    $Start = $Json.IndexOf("{")
+    $End = $Json.LastIndexOf("}")
+    if ($Start -ge 0 -and $End -gt $Start) { $Json = $Json.Substring($Start, $End - $Start + 1) }
+
+    try {
+        $Obj = $Json | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        return $Result
+    }
+
+    if ($null -ne $Obj) {
+        $Result.parsed = $true
+        if ($null -ne $Obj.verified) { $Result.verified = [bool]$Obj.verified }
+        if ($null -ne $Obj.confidence) { $Result.confidence = [string]$Obj.confidence }
+        if ($null -ne $Obj.issues) { $Result.issues = @($Obj.issues) }
+        if ($null -ne $Obj.unsupported_claims) { $Result.unsupported_claims = @($Obj.unsupported_claims) }
+        if ($null -ne $Obj.missing_points) { $Result.missing_points = @($Obj.missing_points) }
+        if ($null -ne $Obj.summary) { $Result.summary = [string]$Obj.summary }
+    }
+    return $Result
+}
+
+# -----------------------------
 # TASK PIPELINE FUNCTIONS - v0.8.52
 # -----------------------------
 
@@ -4152,7 +4407,7 @@ Write-Color "Task splitter     : $TaskSplitterMode" "Gray"
 Write-Color "Task work mode    : $TaskWorkMode" "Gray"
 Write-Color "UI auto mode      : $UiCodeAutoWorkMode" "Gray"
 Write-Color "Prompt preset     : $PromptPreset" "Gray"
-if ($RunFinalVerifier -eq $true) { Write-Color "Final verifier    : configured true, but reserved/no-op in v0.8.52" "Yellow" }
+if ($RunFinalVerifier -eq $true) { Write-Color "Final verifier    : ENABLED (independent post-pass check after the judge)" "Green" }
 
 $StageStarted = Get-Date
 Test-ScriptSecretExposure
@@ -4305,6 +4560,77 @@ Save-Json -Path (Join-Path $RunFolder "task_results_summary.json") -Object $Task
 $TaskSummaryMarkdown = New-TaskSummaryMarkdown -TaskSummary $TaskSummary
 Save-Text -Path (Join-Path $RunFolder "task_results_summary.md") -Text $TaskSummaryMarkdown
 $PipelineStageMetrics += New-StageMetric -TaskId 0 -TaskTitle "Pipeline" -StageName "Pipeline_BuildTaskSummary" -StartTime $StageStarted -EndTime (Get-Date) -Success $true -Details "task_results_summary.json/md"
+
+# v0.8.54: Final verifier post-pass (verifier != judge). OFF unless $RunFinalVerifier is true,
+# so default behavior is byte-identical. Runs AFTER the judge has produced every per-task final
+# answer; it independently checks each final answer and writes Task_NN\final_verification.json
+# plus a run-level final_verification_summary.json.
+if ($RunFinalVerifier -eq $true) {
+    Write-Step "Running final verifier (independent check; verifier is not the judge)"
+    $StageStarted = Get-Date
+    $VerifierModelToUse = $VerifierModel
+    if ([string]::IsNullOrWhiteSpace($VerifierModelToUse)) { $VerifierModelToUse = $AnthropicModel_JudgeStrong }
+    $VerifierSummaryRows = @()
+    foreach ($Tr in $TaskResults) {
+        $Tf = [string]$Tr.TaskFolder
+        if ([string]::IsNullOrWhiteSpace($Tf) -or -not (Test-Path -LiteralPath $Tf)) { continue }
+        $TfFinal = Join-Path $Tf "final_answer.md"
+        if (-not (Test-Path -LiteralPath $TfFinal)) { continue }
+        $FinalText = [System.IO.File]::ReadAllText($TfFinal)
+        $OrigPrompt = ""
+        $TfPrompt = Join-Path $Tf "input_prompt.txt"
+        if (Test-Path -LiteralPath $TfPrompt) { $OrigPrompt = [System.IO.File]::ReadAllText($TfPrompt) }
+
+        $VerifierResult = Invoke-AnthropicVerifier `
+            -PromptText $OrigPrompt `
+            -FinalAnswer $FinalText `
+            -VerifierModel $VerifierModelToUse `
+            -ApiKey $AnthropicApiKey `
+            -Url $AnthropicBaseUrl `
+            -Version $AnthropicVersion `
+            -Proxy $ProxyUrl `
+            -MaxTokens $VerifierMaxTokens `
+            -TimeoutSec $JudgeTimeoutSec `
+            -Retries $MaxRetries
+
+        $VerifierResult = Update-ResultCostEstimate -Result $VerifierResult
+        $Verdict = Get-VerifierVerdict -Text $VerifierResult.Text
+        $IssueCount = @($Verdict.issues).Count
+
+        Save-Json -Path (Join-Path $Tf "final_verification.json") -Object ([PSCustomObject]@{
+            TaskId            = $Tr.TaskId
+            Model             = $VerifierResult.Model
+            Success           = $VerifierResult.Success
+            Verified          = $Verdict.verified
+            Confidence        = $Verdict.confidence
+            Issues            = $Verdict.issues
+            UnsupportedClaims = $Verdict.unsupported_claims
+            MissingPoints     = $Verdict.missing_points
+            Summary           = $Verdict.summary
+            InputTokens       = $VerifierResult.InputTokens
+            OutputTokens      = $VerifierResult.OutputTokens
+            EstimatedCostUsd  = $VerifierResult.EstimatedCostUsd
+            Error             = $VerifierResult.Error
+        })
+
+        $VerifierSummaryRows += [PSCustomObject]@{
+            TaskId           = $Tr.TaskId
+            Verified         = $Verdict.verified
+            Confidence       = $Verdict.confidence
+            IssueCount       = $IssueCount
+            Model            = $VerifierResult.Model
+            EstimatedCostUsd = $VerifierResult.EstimatedCostUsd
+            Success          = $VerifierResult.Success
+        }
+
+        $VerColor = "Yellow"
+        if ($VerifierResult.Success -eq $true -and $Verdict.verified -eq $true) { $VerColor = "Green" }
+        elseif ($VerifierResult.Success -ne $true) { $VerColor = "Red" }
+        Write-Color ("Task " + $Tr.TaskId + " verifier: verified=" + $Verdict.verified + "; confidence=" + $Verdict.confidence + "; issues=" + $IssueCount + "; model=" + $VerifierResult.Model) $VerColor
+    }
+    Save-Json -Path (Join-Path $RunFolder "final_verification_summary.json") -Object $VerifierSummaryRows
+    $PipelineStageMetrics += New-StageMetric -TaskId 0 -TaskTitle "Pipeline" -StageName "Pipeline_FinalVerifier" -StartTime $StageStarted -EndTime (Get-Date) -Success $true -Details ("Verified tasks=" + @($VerifierSummaryRows).Count)
+}
 
 $StageStarted = Get-Date
 $MergedFinal = ""

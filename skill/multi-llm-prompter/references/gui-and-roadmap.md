@@ -112,7 +112,14 @@ and per-task routing overrides are all DONE. Current state:
 - v0.9 Benchmark mode (DELIVERED - v0.1 runner): `add\Multi-LLM-Benchmark-v0.1.ps1` drives the
   headless pipeline over the Gate1 CSV and reports routing accuracy, judge best-answer, and
   cost/tokens/time (benchmark_results.csv + benchmark_summary.md). DryRun (default) + report-only
-  modes; a live run spends real money. RunFinalVerifier (auto-scoring final-vs-singles) is PENDING.
+  modes; a live run spends real money.
+- v0.9 RunFinalVerifier (DELIVERED v0.8.54, opt-in / OFF by default): a verifier DISTINCT from the
+  judge - a gated post-pass that independently re-checks each task's final answer (correctness,
+  completeness, unsupported claims) and writes Task_NN/final_verification.json +
+  final_verification_summary.json. Enable via config Behavior.RunFinalVerifier (or $RunFinalVerifier);
+  model defaults to the strong judge. New Invoke-AnthropicVerifier (HTTP cloned from the judge,
+  ---VERIFIER_JSON--- marker) + Get-VerifierVerdict. Default behavior byte-identical; frozen functions
+  and judge contract unchanged. Live LLM path needs a keyed run to confirm; parser + gating validated.
 - Maintainability (proposed): a Validate-MultiLLM.ps1 harness (parser-check app + helper,
   BOM/CRLF/ASCII/here-string balance, prove frozen functions untouched; optional Pester for
   splitting/routing/cost/judge-markers/config fallback).

@@ -1,8 +1,8 @@
 # HANDOFF - Multi-LLM Prompter
 
 Last updated: 2026-06-16
-Current version: **v0.8.53** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_53.ps1` (~9,153 lines, ~400 KB).
+Current version: **v0.8.54** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_54.ps1` (~9,479 lines, ~414 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -84,7 +84,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_53.ps1` - ~9,153 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_54.ps1` - ~9,479 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -287,6 +287,12 @@ UIReady; timer stopped + child killed on Closing.
   a recursive Win32_Process fallback) from the Stop button and the window Closing handler, so a
   stopped run cannot leave its Start-Job answer/judge grandchildren making in-flight API calls.
   GUI/teardown only; frozen functions, judge policy, routing, and cost math unchanged.
+- v0.8.54: RunFinalVerifier implemented (opt-in, OFF by default). A gated post-pass after the per-task
+  loop independently checks each task's final answer (Invoke-AnthropicVerifier - HTTP cloned from the
+  judge; Get-VerifierVerdict parser; writes Task_NN/final_verification.json + a run summary). Verifier
+  is NOT the judge; defaults to the strong judge model. Default behavior byte-identical; frozen
+  functions + judge contract unchanged. Live LLM path not yet tested (no keys in build env); the
+  parser (14/14) + the off-by-default gating are.
 
 ---
 
@@ -312,8 +318,11 @@ UIReady; timer stopped + child killed on Closing.
   judge best-answer, and cost/tokens/time (benchmark_results.csv + benchmark_summary.md). DryRun
   (default) and report-only modes; a live run spends real money. The subjective Gate-1 verdict
   (does the final beat both singles) stays a manual read - auto-scoring it is RunFinalVerifier.
-- v0.9 RunFinalVerifier (PENDING): a verifier distinct from the judge that independently checks
-  the final answer.
+- v0.9 RunFinalVerifier (DELIVERED v0.8.54, opt-in / OFF by default): a verifier distinct from the
+  judge. Gated post-pass; enable via config Behavior.RunFinalVerifier = true (or $RunFinalVerifier).
+  Writes Task_NN/final_verification.json + final_verification_summary.json; verifier model defaults to
+  the strong judge ($VerifierModel/$VerifierMaxTokens override). Needs a live run with keys to confirm
+  the LLM path end-to-end (build env had no keys).
 - Validation harness (DELIVERED): Validate-MultiLLM.ps1 parser-checks the app + helper + benchmark,
   verifies BOM/CRLF/ASCII/here-string balance + no top-level param(), proves the frozen functions
   are present and behaviorally unchanged (golden cost/routing cases), and checks the judge markers
