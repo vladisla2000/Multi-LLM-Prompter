@@ -116,7 +116,8 @@ and per-task routing overrides are all DONE. Current state:
 - v0.9 RunFinalVerifier (DELIVERED v0.8.54, opt-in / OFF by default): a verifier DISTINCT from the
   judge - a gated post-pass that independently re-checks each task's final answer (correctness,
   completeness, unsupported claims) and writes Task_NN/final_verification.json +
-  final_verification_summary.json. Enable via config Behavior.RunFinalVerifier (or $RunFinalVerifier);
+  final_verification_summary.json. Enable via the GUI "Run final verifier" checkbox (ChkRunVerifier,
+  v0.8.55 -> MULTILLM_RUNVERIFIER env) or config Behavior.RunFinalVerifier (or $RunFinalVerifier);
   model defaults to the strong judge. New Invoke-AnthropicVerifier (HTTP cloned from the judge,
   ---VERIFIER_JSON--- marker) + Get-VerifierVerdict. Default behavior byte-identical; frozen functions
   and judge contract unchanged. Live LLM path needs a keyed run to confirm; parser + gating validated.

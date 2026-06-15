@@ -1,8 +1,8 @@
 # HANDOFF - Multi-LLM Prompter
 
 Last updated: 2026-06-16
-Current version: **v0.8.54** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_54.ps1` (~9,479 lines, ~414 KB).
+Current version: **v0.8.55** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_55.ps1` (~9,501 lines, ~416 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -72,6 +72,7 @@ Added since v0.8.2:
 - MULTILLM_PERSONA_A (v0.8.41) persona key for Answer A (architect / ui_ux / devils_advocate
   / qa / senior_dev / none)
 - MULTILLM_PERSONA_B (v0.8.41) persona key for Answer B
+- MULTILLM_RUNVERIFIER (v0.8.55) "1"/"0" - enable the final verifier for this run (GUI "Run final verifier" checkbox). Absent -> config/default $RunFinalVerifier (CLI unchanged).
 
 Precedence: env applied AFTER config load -> GUI choices win over config, which wins over
 top-of-script defaults.
@@ -84,7 +85,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_54.ps1` - ~9,479 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_55.ps1` - ~9,501 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -293,6 +294,10 @@ UIReady; timer stopped + child killed on Closing.
   is NOT the judge; defaults to the strong judge model. Default behavior byte-identical; frozen
   functions + judge contract unchanged. Live LLM path not yet tested (no keys in build env); the
   parser (14/14) + the off-by-default gating are.
+- v0.8.55: GUI toggle for the verifier. New "Run final verifier" checkbox (ChkRunVerifier) passes a
+  new MULTILLM_RUNVERIFIER env var to the child, which sets $RunFinalVerifier for that run (CLI
+  unchanged when the var is absent). Off by default. XAML-load smoke-tested + harness PASS 48/0;
+  runtime still needs a keyed GUI run to confirm.
 
 ---
 
@@ -319,7 +324,8 @@ UIReady; timer stopped + child killed on Closing.
   (default) and report-only modes; a live run spends real money. The subjective Gate-1 verdict
   (does the final beat both singles) stays a manual read - auto-scoring it is RunFinalVerifier.
 - v0.9 RunFinalVerifier (DELIVERED v0.8.54, opt-in / OFF by default): a verifier distinct from the
-  judge. Gated post-pass; enable via config Behavior.RunFinalVerifier = true (or $RunFinalVerifier).
+  judge. Gated post-pass; enable via the GUI "Run final verifier" checkbox (v0.8.55, MULTILLM_RUNVERIFIER)
+  or config Behavior.RunFinalVerifier = true (or $RunFinalVerifier).
   Writes Task_NN/final_verification.json + final_verification_summary.json; verifier model defaults to
   the strong judge ($VerifierModel/$VerifierMaxTokens override). Needs a live run with keys to confirm
   the LLM path end-to-end (build env had no keys).

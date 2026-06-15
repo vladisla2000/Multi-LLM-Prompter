@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.54 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.55 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.54:
+# Changes through v0.8.55:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -360,6 +360,13 @@
 #       Frozen functions, judge marker contract, routing, and cost math unchanged. NOTE: the verifier
 #       LLM call path is not yet live-tested (no keys in the build env); the parser and the off-by-
 #       default gating are validated.
+#   91. v0.8.55: GUI toggle for the final verifier + per-run env control. New "Run final verifier"
+#       checkbox (ChkRunVerifier) in the model row; on Run it passes MULTILLM_RUNVERIFIER=1/0 to the
+#       headless child, which sets $RunFinalVerifier for that run (config/default still apply when the
+#       env var is absent, so CLI behavior is unchanged). Off by default. Completes the env contract
+#       for the v0.8.54 verifier so it can be enabled per-run from the GUI (and by the benchmark
+#       runner). GUI + one env read only; frozen functions, judge contract, routing, and cost math
+#       unchanged. The verifier's own LLM call still needs a keyed run to confirm end-to-end.
 #
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
@@ -375,7 +382,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.54"
+$ToolVersion = "v0.8.55"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -855,6 +862,10 @@ if ($Script:HeadlessMode -eq $true) {
 
     if (-not [string]::IsNullOrWhiteSpace($env:MULTILLM_PERSONA_B)) {
         $PersonaB = $env:MULTILLM_PERSONA_B
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($env:MULTILLM_RUNVERIFIER)) {
+        $RunFinalVerifier = ($env:MULTILLM_RUNVERIFIER -eq "1")
     }
 }
 
@@ -7920,6 +7931,8 @@ $GuiXamlTemplate = @"
                     ToolTip="Full comparisons always use the Quality judge. When on, lighter Review/Light checks use the cheaper Fast judge on the right."/>
           <TextBlock Text="Fast judge:" VerticalAlignment="Center" Margin="6,0,4,0" ToolTip="The cheaper judge used only for Review/Light checks (single-answer validation) when Use fast judge is on."/>
           <ComboBox Name="CheapJudgeCombo" Width="140" Height="26" IsEditable="True"/>
+          <CheckBox Name="ChkRunVerifier" Content="Run final verifier" VerticalAlignment="Center" Margin="12,0,4,0"
+                    ToolTip="Optional. After the judge writes each task final answer, an independent verifier (not the judge) re-checks it for correctness, completeness, and unsupported claims. Off by default; uses the strong judge model and adds one API call per task."/>
         </WrapPanel>
       </Grid>
     </Border>
@@ -8178,6 +8191,7 @@ $Script:Ctl_ModelACombo  = $GuiWindow.FindName("ModelACombo")
 $Script:Ctl_ModelBCombo  = $GuiWindow.FindName("ModelBCombo")
 $Script:Ctl_JudgeCombo   = $GuiWindow.FindName("JudgeCombo")
 $Script:Ctl_ChkCheapJudge = $GuiWindow.FindName("ChkCheapJudge")
+$Script:Ctl_ChkRunVerifier = $GuiWindow.FindName("ChkRunVerifier")
 $Script:Ctl_CheapJudgeCombo = $GuiWindow.FindName("CheapJudgeCombo")
 $Script:Ctl_BtnOpenFolder = $GuiWindow.FindName("BtnOpenFolder")
 $Script:Ctl_BtnOpenConfig = $GuiWindow.FindName("BtnOpenConfig")
@@ -8320,6 +8334,7 @@ Initialize-ModelCombo -Combo $Script:Ctl_JudgeCombo -KnownModels @("claude-opus-
 Initialize-ModelCombo -Combo $Script:Ctl_CheapJudgeCombo -KnownModels @("claude-sonnet-4-6", "claude-haiku-4-5") -DefaultModel $AnthropicModel_JudgeCheap
 
 $Script:Ctl_ChkCheapJudge.IsChecked = $UseCheapJudgeForReview
+if ($null -ne $Script:Ctl_ChkRunVerifier) { $Script:Ctl_ChkRunVerifier.IsChecked = $RunFinalVerifier }
 $Script:Ctl_CheapJudgeCombo.IsEnabled = ($UseCheapJudgeForReview -eq $true)
 
 $Script:Ctl_ChkCheapJudge.Add_Click({
@@ -8702,6 +8717,12 @@ $Script:Ctl_BtnRun.Add_Click({
         $CheapJudgeFlag = "1"
     }
 
+    $VerifierFlag = "0"
+    if ($null -ne $Script:Ctl_ChkRunVerifier -and $Script:Ctl_ChkRunVerifier.IsChecked -eq $true) {
+        $VerifierFlag = "1"
+        Add-GuiLog -Tag "INFO" -Message "Final verifier: ON (independent check after the judge; one extra API call per task)."
+    }
+
     # Launch hidden headless child process running this same script.
     try {
         $Psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -8783,6 +8804,7 @@ $Script:Ctl_BtnRun.Add_Click({
         $Psi.EnvironmentVariables["MULTILLM_PERSONA_MODE"]      = $PersonaMode
         $Psi.EnvironmentVariables["MULTILLM_PERSONA_A"]         = $PersonaA
         $Psi.EnvironmentVariables["MULTILLM_PERSONA_B"]         = $PersonaB
+        $Psi.EnvironmentVariables["MULTILLM_RUNVERIFIER"]       = $VerifierFlag
 
         $Script:ChildProcess = [System.Diagnostics.Process]::Start($Psi)
     }

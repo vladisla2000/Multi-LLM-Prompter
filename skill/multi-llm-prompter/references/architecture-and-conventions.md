@@ -2,7 +2,7 @@
 
 ## Shape
 
-- Single-file PS 5.1 / ISE tool (~9,479 lines as of v0.8.54). `$LaunchGui = $true` runs the
+- Single-file PS 5.1 / ISE tool (~9,501 lines as of v0.8.55). `$LaunchGui = $true` runs the
   WPF GUI; `$false` runs the classic CLI pipeline.
 - The SAME .ps1 runs as a hidden headless child for the actual pipeline work
   (`MULTILLM_HEADLESS=1`). GUI writes `gui_prompt.txt`, pre-creates the run folder,
@@ -32,6 +32,7 @@
     MULTILLM_PERSONA_A         persona key for Answer A (architect / ui_ux / devils_advocate
                                / qa / senior_dev / none) (v0.8.41)
     MULTILLM_PERSONA_B         persona key for Answer B (v0.8.41)
+    MULTILLM_RUNVERIFIER       "1"/"0" enable the final verifier for this run (v0.8.55; GUI checkbox)
 
 - Precedence: env applied AFTER config load -> GUI choices win over config, which wins
   over top-of-script defaults.
