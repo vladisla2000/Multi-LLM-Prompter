@@ -1,7 +1,11 @@
 ﻿cls
 # ============================================================
 # Multi-LLM Prompter - Benchmark Runner
-# Version: v0.1
+# Version: v0.2
+# Changes in v0.2: added a Verified column (reads each task's final_verification.json when the
+#   final verifier ran) to benchmark_results.csv + the summary table, plus a "Final verifier:
+#   N/M verified" stat. To populate it, enable RunFinalVerifier (config Behavior.RunFinalVerifier)
+#   before the run; tasks without a verification file leave the column blank.
 # Purpose: Run the Gate-1 benchmark prompt set through the existing pipeline and
 #   produce a comparison report (routing accuracy, judge verdicts, cost/tokens/time).
 # PowerShell: 5.1 / ISE friendly. ASCII source, UTF-8 BOM, CRLF.
@@ -180,6 +184,14 @@ function Get-BenchmarkRows {
         $SrcA = [string](Get-PropValue -Object $Source -Name "A" -Default "")
         $SrcB = [string](Get-PropValue -Object $Source -Name "B" -Default "")
 
+        # Final verifier (optional; present only when RunFinalVerifier ran for this task).
+        $VerObj = ConvertFrom-JsonSafe -Text (Get-FileTextSafe -Path (Join-Path $TaskFolder "final_verification.json"))
+        $VerifiedVal = ""
+        if ($null -ne $VerObj) {
+            $Vv = Get-PropValue -Object $VerObj -Name "Verified" -Default $null
+            if ($Vv -eq $true) { $VerifiedVal = "Y" } elseif ($Vv -eq $false) { $VerifiedVal = "N" } else { $VerifiedVal = "?" }
+        }
+
         $Rows += [pscustomobject]@{
             CsvId            = $CsvId
             Category         = $Category
@@ -193,6 +205,7 @@ function Get-BenchmarkRows {
             Confidence       = $Confidence
             FinalSourceA     = $SrcA
             FinalSourceB     = $SrcB
+            Verified         = $VerifiedVal
             Success          = [string](Get-PropValue -Object $T -Name "Success" -Default "")
             Completeness     = $(if (Get-IsTrue (Get-PropValue -Object $T -Name "CompletenessWarning" -Default $false)) { "WARN" } else { "OK" })
             InputTokens      = [int](Get-PropValue -Object $T -Name "InputTokens" -Default 0)
@@ -226,6 +239,8 @@ function Write-BenchmarkReport {
     $BestOther = $N - $BestA - $BestB
     $Failures = @($Rows | Where-Object { -not (Get-IsTrue $_.Success) }).Count
     $Warns = @($Rows | Where-Object { $_.Completeness -eq "WARN" }).Count
+    $VerRated = @($Rows | Where-Object { $_.Verified -eq "Y" -or $_.Verified -eq "N" })
+    $VerYes = @($Rows | Where-Object { $_.Verified -eq "Y" }).Count
 
     $TotalCost = 0.0
     $TotalTokens = 0
@@ -243,14 +258,15 @@ function Write-BenchmarkReport {
     $L += ("- Routing accuracy (actual TaskType == ExpectedTaskType): " + $RoutingPct)
     $L += ("- Judge best answer: A=" + $BestA + "  B=" + $BestB + "  other/none=" + $BestOther)
     $L += ("- Failures: " + $Failures + "   Completeness warnings: " + $Warns)
+    if (@($VerRated).Count -gt 0) { $L += ("- Final verifier: " + $VerYes + "/" + @($VerRated).Count + " verified") }
     $L += ("- Total estimated cost (USD): " + ("{0:N4}" -f $TotalCost))
     $L += ("- Average cost per prompt (USD): " + ("{0:N4}" -f $AvgCost))
     $L += ("- Total tokens: " + $TotalTokens)
     $L += ""
     $L += "## Per-prompt results"
     $L += ""
-    $L += "| Id | Category | Expected | Actual | Match | Work | Judge | Best | Conf | A% | B% | OK | Compl | Tokens | Cost USD |"
-    $L += "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+    $L += "| Id | Category | Expected | Actual | Match | Work | Judge | Best | Conf | A% | B% | Ver | OK | Compl | Tokens | Cost USD |"
+    $L += "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
     foreach ($R in $Rows) {
         $L += ("| " +
             (Escape-MarkdownCell ([string]$R.CsvId)) + " | " +
@@ -264,6 +280,7 @@ function Write-BenchmarkReport {
             (Escape-MarkdownCell ([string]$R.Confidence)) + " | " +
             (Escape-MarkdownCell ([string]$R.FinalSourceA)) + " | " +
             (Escape-MarkdownCell ([string]$R.FinalSourceB)) + " | " +
+            (Escape-MarkdownCell ([string]$R.Verified)) + " | " +
             (Escape-MarkdownCell ([string]$R.Success)) + " | " +
             (Escape-MarkdownCell ([string]$R.Completeness)) + " | " +
             (Escape-MarkdownCell ([string]$R.TotalTokens)) + " | " +
@@ -288,7 +305,7 @@ function Write-BenchmarkReport {
 # MAIN
 # -----------------------------
 
-Write-Header "Multi-LLM Prompter Benchmark Runner v0.1"
+Write-Header "Multi-LLM Prompter Benchmark Runner v0.2"
 
 $ScriptFolder = Resolve-ScriptFolder
 $ParentFolder = Split-Path -Path $ScriptFolder -Parent

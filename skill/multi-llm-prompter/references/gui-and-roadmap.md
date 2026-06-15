@@ -109,7 +109,7 @@ and per-task routing overrides are all DONE. Current state:
 
 ## Roadmap
 
-- v0.9 Benchmark mode (DELIVERED - v0.1 runner): `add\Multi-LLM-Benchmark-v0.1.ps1` drives the
+- v0.9 Benchmark mode (DELIVERED - v0.2 runner): `add\Multi-LLM-Benchmark-v0.2.ps1` drives the
   headless pipeline over the Gate1 CSV and reports routing accuracy, judge best-answer, and
   cost/tokens/time (benchmark_results.csv + benchmark_summary.md). DryRun (default) + report-only
   modes; a live run spends real money.
@@ -141,7 +141,7 @@ and per-task routing overrides are all DONE. Current state:
   flat output. v0.2 rewrote it for the Run_*/Task_NN layout (answers from answers_raw.json; judge
   files validated only when router_decision.json UseJudge = true). v0.3 also reports the optional
   final verifier: per-task Verifier check from final_verification.json + a run-level verified N/M line.
-- `add\Multi-LLM-Benchmark-v0.1.ps1` (DONE): drives the headless pipeline over the Gate-1 CSV
+- `add\Multi-LLM-Benchmark-v0.2.ps1` (DONE): drives the headless pipeline over the Gate-1 CSV
   (writes tasks_input.json + the env contract, starts the main script headless), then reports
   routing accuracy vs ExpectedTaskType, judge best-answer, and cost/tokens/time. Standalone -
   no changes to the main app. DryRun (default) and report-only modes.

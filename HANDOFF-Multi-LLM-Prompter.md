@@ -100,7 +100,7 @@ Project folder: `C:\_Combined\Multi-LLM-Prompter\` (this is the live working cop
   does NOT exist on disk - it is only a fallback). Prefer a file next to the .ps1, then legacy,
   else create next to the .ps1.
 - add\ - dev helpers: Multi-LLM-Gate1-Benchmark-Prompts.csv (benchmark input),
-  Multi-LLM-Benchmark-v0.1.ps1 (Gate-1 benchmark runner; drives the headless pipeline over the
+  Multi-LLM-Benchmark-v0.2.ps1 (Gate-1 benchmark runner; drives the headless pipeline over the
   CSV and reports routing/cost/judge), Multi-LLM-RunReviewHelper-v0.3.ps1 (single-run analyzer;
   v0.1 was broken + flat-layout-only and is superseded), My Ideas.txt.
 - Validate-MultiLLM.ps1 (repo root) - pre-delivery validation harness for the app + helpers.
@@ -313,7 +313,7 @@ UIReady; timer stopped + child killed on Closing.
 
 ## 7. ROADMAP
 
-- v0.9 Benchmark mode (DELIVERED - v0.1 runner): add\Multi-LLM-Benchmark-v0.1.ps1 drives the
+- v0.9 Benchmark mode (DELIVERED - v0.2 runner): add\Multi-LLM-Benchmark-v0.2.ps1 drives the
   headless pipeline over the Gate1 CSV and reports routing accuracy (actual vs ExpectedTaskType),
   judge best-answer, and cost/tokens/time (benchmark_results.csv + benchmark_summary.md). DryRun
   (default) and report-only modes; a live run spends real money. The subjective Gate-1 verdict
