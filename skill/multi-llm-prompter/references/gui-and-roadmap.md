@@ -136,10 +136,11 @@ and per-task routing overrides are all DONE. Current state:
 
 ## Dev helper
 
-- `add\Multi-LLM-RunReviewHelper-v0.2.ps1` (DONE): reviews one completed run folder. v0.1 was
+- `add\Multi-LLM-RunReviewHelper-v0.3.ps1` (DONE): reviews one completed run folder. v0.1 was
   broken (a markdown backtick escaped a closing quote -> 21 parse errors) and assumed the old
-  flat output. v0.2 parses clean and understands the Run_*/Task_NN layout, reading answers from
-  answers_raw.json and validating judge files only when router_decision.json UseJudge = true.
+  flat output. v0.2 rewrote it for the Run_*/Task_NN layout (answers from answers_raw.json; judge
+  files validated only when router_decision.json UseJudge = true). v0.3 also reports the optional
+  final verifier: per-task Verifier check from final_verification.json + a run-level verified N/M line.
 - `add\Multi-LLM-Benchmark-v0.1.ps1` (DONE): drives the headless pipeline over the Gate-1 CSV
   (writes tasks_input.json + the env contract, starts the main script headless), then reports
   routing accuracy vs ExpectedTaskType, judge best-answer, and cost/tokens/time. Standalone -

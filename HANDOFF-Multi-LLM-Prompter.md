@@ -101,7 +101,7 @@ Project folder: `C:\_Combined\Multi-LLM-Prompter\` (this is the live working cop
   else create next to the .ps1.
 - add\ - dev helpers: Multi-LLM-Gate1-Benchmark-Prompts.csv (benchmark input),
   Multi-LLM-Benchmark-v0.1.ps1 (Gate-1 benchmark runner; drives the headless pipeline over the
-  CSV and reports routing/cost/judge), Multi-LLM-RunReviewHelper-v0.2.ps1 (single-run analyzer;
+  CSV and reports routing/cost/judge), Multi-LLM-RunReviewHelper-v0.3.ps1 (single-run analyzer;
   v0.1 was broken + flat-layout-only and is superseded), My Ideas.txt.
 - Validate-MultiLLM.ps1 (repo root) - pre-delivery validation harness for the app + helpers.
 
@@ -223,7 +223,7 @@ Task_NN\ (per task):
 - judge_raw.json, judge_text.txt, judge_scores_text.json, judge_parsed.json (only when a judge
   ran), selected_answer.md (Light/ReviewOnly), final_answer.md (per-task)
 
-The run-review helper (add\Multi-LLM-RunReviewHelper-v0.2.ps1) understands this layout and treats
+The run-review helper (add\Multi-LLM-RunReviewHelper-v0.3.ps1) understands this layout and treats
 judge files as conditional on router_decision.json UseJudge.
 
 ---

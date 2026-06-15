@@ -1,10 +1,16 @@
 ﻿cls
 # ============================================================
 # Multi-LLM Prompter - Run Review Helper
-# Version: v0.2
+# Version: v0.3
 # Purpose: Review one completed run folder after a live/API run.
 # PowerShell: 5.1 / ISE friendly. ASCII source, UTF-8 BOM, CRLF.
 # ============================================================
+# Changes in v0.3:
+#   1. Reports the optional final verifier (main app v0.8.54+). When a task folder has a
+#      final_verification.json, adds a Verifier check: OK when verified=true, WARN when the
+#      verifier flagged issues or its call failed. An absent file means RunFinalVerifier was
+#      off, so no check is added (no noise). A run-level "verified N/M" line is added to the
+#      console and the markdown report when any verifier results are present.
 # Changes in v0.2:
 #   1. Fixed a parse error. The v0.1 "Reviewed folder" markdown line used a
 #      backtick directly before the closing double quote, which escaped the
@@ -211,7 +217,7 @@ function Test-RunFile {
 # MAIN
 # -----------------------------
 
-Write-Header "Multi-LLM Prompter Run Review Helper v0.2"
+Write-Header "Multi-LLM Prompter Run Review Helper v0.3"
 
 $Checks = @()
 $NowStamp = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -456,6 +462,28 @@ foreach ($TaskScope in $TaskScopes) {
         if ($RTaskType -ne "") { $WhyNoJudge = "TaskType=" + $RTaskType + " does not use a judge" }
         Add-Check -Scope $Scope -Area "Judge" -Check "judge (skipped)" -Status "INFO" -Details $WhyNoJudge
     }
+
+    # Final verifier (main app v0.8.54+): only present when RunFinalVerifier was on.
+    # Absent file = verifier not run, so no check is added.
+    $VerObj = ConvertFrom-JsonSafe -Text (Get-FileTextSafe -Path (Join-Path $TaskPath "final_verification.json"))
+    if ($null -ne $VerObj) {
+        $VerSuccess = Get-IsTrue (Get-PropValue -Object $VerObj -Name "Success" -Default $false)
+        $VerVerified = Get-PropValue -Object $VerObj -Name "Verified" -Default $null
+        $VerConf = [string](Get-PropValue -Object $VerObj -Name "Confidence" -Default "")
+        $VerIssues = @(Get-PropValue -Object $VerObj -Name "Issues" -Default @())
+        if (-not $VerSuccess) {
+            Add-Check -Scope $Scope -Area "Verifier" -Check "final_verification.json" -Status "WARN" -Details ("Verifier call did not succeed: " + [string](Get-PropValue -Object $VerObj -Name "Error" -Default ""))
+        }
+        elseif ($VerVerified -eq $true) {
+            Add-Check -Scope $Scope -Area "Verifier" -Check "final answer verified" -Status "OK" -Details ("verified=true; confidence=" + $VerConf + "; issues=" + $VerIssues.Count)
+        }
+        else {
+            $IssueText = (@($VerIssues) | Select-Object -First 3) -join "; "
+            $VerDetail = "verified=" + $VerVerified + "; confidence=" + $VerConf + "; issues=" + $VerIssues.Count
+            if (-not [string]::IsNullOrWhiteSpace($IssueText)) { $VerDetail = $VerDetail + " (" + $IssueText + ")" }
+            Add-Check -Scope $Scope -Area "Verifier" -Check "final answer verified" -Status "WARN" -Details $VerDetail
+        }
+    }
 }
 
 # -----------------------------
@@ -466,6 +494,10 @@ $ErrorCount = @($Checks | Where-Object { $_.Status -eq "ERROR" }).Count
 $WarnCount = @($Checks | Where-Object { $_.Status -eq "WARN" }).Count
 $OkCount = @($Checks | Where-Object { $_.Status -eq "OK" }).Count
 $InfoCount = @($Checks | Where-Object { $_.Status -eq "INFO" }).Count
+
+$VerChecks = @($Checks | Where-Object { $_.Area -eq "Verifier" })
+$VerOkCount = @($VerChecks | Where-Object { $_.Status -eq "OK" }).Count
+$VerTotal = $VerChecks.Count
 
 if ($ErrorCount -eq 0 -and $WarnCount -eq 0) {
     $Overall = "PASS"
@@ -480,6 +512,7 @@ else {
 Write-Header ("Review Result: " + $Overall)
 Write-Color ("Tasks: " + $TaskScopes.Count + "   Total est. cost: $" + ("{0:N4}" -f $TotalCost)) "White"
 Write-Color ("OK: " + $OkCount + "   WARN: " + $WarnCount + "   ERROR: " + $ErrorCount + "   INFO: " + $InfoCount) "White"
+if ($VerTotal -gt 0) { Write-Color ("Final verifier: " + $VerOkCount + "/" + $VerTotal + " task final answer(s) verified") "White" }
 Write-Host ""
 
 foreach ($Check in $Checks) {
@@ -518,6 +551,7 @@ $ReportLines += ("- OK: " + $OkCount)
 $ReportLines += ("- WARN: " + $WarnCount)
 $ReportLines += ("- ERROR: " + $ErrorCount)
 $ReportLines += ("- INFO: " + $InfoCount)
+if ($VerTotal -gt 0) { $ReportLines += ("- Final verifier: " + $VerOkCount + "/" + $VerTotal + " task final answer(s) verified") }
 $ReportLines += ""
 
 if ($TaskSummary.Count -gt 0) {
