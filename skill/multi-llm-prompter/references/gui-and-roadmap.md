@@ -116,10 +116,12 @@ and per-task routing overrides are all DONE. Current state:
 - Maintainability (proposed): a Validate-MultiLLM.ps1 harness (parser-check app + helper,
   BOM/CRLF/ASCII/here-string balance, prove frozen functions untouched; optional Pester for
   splitting/routing/cost/judge-markers/config fallback).
-- Versioning (DECIDED 2026-06-15): release discipline moves into git commits per version
-  (commit each version with the changelog entry as the message) instead of accumulating
-  versioned .ps1 files. `backups\` stays gitignored as a local safety net. Still bump the
-  in-file version + changelog every build.
+- Versioning (DECIDED 2026-06-15, refined 2026-06-16): per main-script change the order is
+  "backup, then rename the new version": (1) copy the current `Multi-LLM-Prompter-vX.ps1` into
+  `backups\` (gitignored safety net), (2) make the change, (3) `git mv` to vX+1 + bump the
+  in-file version/header + changelog, (4) run `Validate-MultiLLM.ps1`, (5) one git commit per
+  version. `backups\` is gitignored so it never bloats the repo; git history is the canonical
+  version record.
 - v1.0: config + adapters + CLI + GUI + benchmark + presets.
 - Deferred / parked: judge-tier-by-complexity (low ROI; AD/security stays Full Opus by
   policy); OpenRouter/LiteLLM backend, 4-5 answer models, separate Synthesizer, RAG,

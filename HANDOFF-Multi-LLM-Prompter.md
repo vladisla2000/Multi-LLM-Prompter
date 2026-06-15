@@ -318,11 +318,15 @@ UIReady; timer stopped + child killed on Closing.
   verifies BOM/CRLF/ASCII/here-string balance + no top-level param(), proves the frozen functions
   are present and behaviorally unchanged (golden cost/routing cases), and checks the judge markers
   + Full->strong-judge enforcement. Run it before every delivery.
-- Versioning (DECIDED 2026-06-15): release discipline moves into git commits per version
-  (commit each version with the changelog entry as the message) instead of accumulating
-  versioned .ps1 files. backups\ stays gitignored as a local safety net. Still bump the
-  in-file version + changelog every build; the single live Multi-LLM-Prompter-v*.ps1 is the
-  working file, and git history is the version record.
+- Versioning (DECIDED 2026-06-15, refined 2026-06-16): per main-script change the order is
+  "backup, then rename the new version":
+  1. copy the current Multi-LLM-Prompter-vX.ps1 into backups\ (gitignored local safety net),
+  2. make the change,
+  3. git mv to vX+1 + bump the in-file $ToolVersion/header + add a numbered changelog entry,
+  4. run Validate-MultiLLM.ps1,
+  5. one git commit per version.
+  backups\ never bloats the repo (gitignored); git history is the canonical version record.
+  The single live Multi-LLM-Prompter-v*.ps1 is the working file.
 - LATER / parked: judge-tier-by-complexity (low ROI for the AD/security workload, which stays
   Full Opus by policy). Deferred: OpenRouter/LiteLLM backend, 4-5 answer models, separate
   Synthesizer, RAG, per-task model matrix.
