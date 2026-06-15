@@ -54,77 +54,76 @@ startup, after any save, and on a run attempt - keep them in sync if you add a 4
 Model combos are `IsEditable=True` (typed ids allowed) - the deliberate exception to
 the project's usual `ComboBox IsEditable=False` rule. Keep it.
 
-## Detect Tasks (v0.8.1) and Phase 2
+## Detect Tasks and Phase 2 (DELIVERED, v0.8.9 - v0.8.40)
 
-- v0.8.1 Detect Tasks is a READ-ONLY preview: it splits the current prompt with the SAME
-  splitter + classifier the run uses and previews Id/Type/Title into the Tasks tab. No
-  child, no API call. Logs "Detected N task(s) - preview only".
-- Phase 2 FOUNDATION (v0.8.9, DONE): the architecture change shipped. Detect Tasks also
-  fills a new "Edit Tasks" tab (`TasksEditBox`, one task per line) + checks
-  `ChkUseEditedTasks`. On Run, if that box is in use, the GUI writes `tasks_input.json`
-  (array of {TaskId, PromptText}) to the run folder and passes `MULTILLM_TASKS_FILE`; the
-  child loads that list INSTEAD of `Split-UserPromptIntoTasks` (falls back to the splitter
-  if absent/empty). Chosen text-line editor over a DataGrid/cards because live WPF binding
-  can't be parser-verified blind - the editor is bullet-proof. The "Edit Tasks" tab is the
-  LAST TabItem (index 4) on purpose: tab indices are hardcoded (`SelectedIndex=3` = Run Log),
-  so never insert a tab before the end.
-- Phase 2 NEXT (visual, needs ISE iteration): restyle the editor into the cards /
-  checkbox-grid "Run Selected" panel (per-task badge, select checkbox, Merge, reorder
-  buttons) on top of the proven `tasks_input.json` foundation.
+Phase 2 shipped incrementally - the editable Tasks panel, selective run, pre-run estimator,
+and per-task routing overrides are all DONE. Current state:
+
+- Detect Tasks splits the current prompt with the SAME splitter + classifier the run uses
+  (no child, no API) and fills the Tasks tab. On Run with no detected tasks, the GUI
+  auto-Detects first (v0.8.46 `Invoke-DetectTasks`).
+- The Tasks tab is DUAL-MODE: an editable pre-run task-review grid and a read-only results
+  grid after a run (`Select-MainTab` replaced the hardcoded SelectedIndex jumps, v0.8.10).
+- Pre-run task-review grid: per-row Run checkbox (live CheckBox template, v0.8.13) + header
+  master tri-state checkbox (v0.8.27), Type / Title / excerpt, route, and PRE-RUN estimates
+  (Est. Cost / Tokens / Time) computed by `Get-GuiTaskEstimate` from the frozen
+  `Get-EstimatedCostUsd` + per-type budgets/timeouts (v0.8.10/0.8.15). Selected/all totals
+  in a summary + status bar. Estimates re-run live when the model/judge selection changes
+  (v0.8.45) and on combo LostFocus for typed ids (v0.8.47).
+- Selective run: on Run, only SELECTED tasks are written to `tasks_input.json` (array of
+  {TaskId, TaskTitle, PromptText, TypeOverride, WorkModeOverride}); unselected tasks are
+  never sent/judged/billed. Child loads that list INSTEAD of `Split-UserPromptIntoTasks`
+  (falls back to the splitter if `MULTILLM_TASKS_FILE` is absent/empty - the CLI safety net).
+- Per-task routing overrides: the Selected Task Details pane has Type + Work mode dropdowns
+  (default Auto = use the router). A non-empty override sets TypeOverride / WorkModeOverride,
+  re-runs the row estimate, and is written to tasks_input.json. Applied as GATES around the
+  call sites; `Get-TaskType` / `Get-TaskWorkMode` BODIES stay byte-frozen (v0.8.39 backend,
+  v0.8.40 GUI). Effective route + cost are logged so an override cannot silently change cost.
+- Live per-task progress: during a run the grid colors rows as tasks finish - Done green,
+  Running amber, pending neutral (v0.8.48), driven from the poll timer.
+
+## Other GUI surface added since v0.8.8
+
+- Left sidebar nav (v0.8.19) with working actions (v0.8.50): Runs -> Tasks tab, Prompts ->
+  focus prompt, Presets/Models -> open dropdowns, Settings -> config menu.
+- Right inspector rail (v0.8.20, widened through v0.8.42): Run Details / Cost / Token Usage /
+  Latency / Run Health. Cost card has a configurable budget (`Output.CostBudgetUsd`, 0 = off,
+  v0.8.29), predicted-vs-actual delta (v0.8.30), and approx ILS at rate 3.7 (v0.8.34/0.8.38).
+- Top menu bar (v0.8.31): Settings (config / set keys / output folder) + Help (about /
+  session log / developer notes), built in CODE to dodge the MenuItem namescope gotcha.
+- Personas (v0.8.41): static persona preambles for Answer A/B (see pipeline-and-judge.md).
+- Clarification gate (v0.8.25/0.8.26): "Ask questions if prompt is vague" with Local/AI mode.
+- Run-done signal (v0.8.43): status bar recolors green/red + a sound plays.
+- Version badge in the header (v0.8.44); single Collapse/Expand log toggle (v0.8.51).
+- Flat Button style with a visible disabled state (v0.8.32); tooltips on controls (v0.8.36).
 
 ## Known-issue watch-list
 
 - Completeness-warning false positives (markdown endings without punctuation):
   intentionally unfixed, collecting stats.
 - Stop kills only the child; Start-Job grandchildren may finish in-flight calls (warning
-  logged). Process-tree kill would clear the backlog but is not implemented.
+  logged). Process-tree kill would clear the backlog but is not implemented (real money).
 - Judge cost dominance (~93% on a tiny script) is EXPECTED because Full = Opus; not a bug.
 
 ## Roadmap
 
-- v0.8.2 (DONE): AD-inventory answer/judge prompt rules (New-Item -Force,
-  DistinguishedName, no constant Enabled column). Prompt-only; routing/cost untouched.
-- v0.8.3 path-fix (DONE): `$ConfigPath`/`$SecretsPath` script-relative + legacy fallback.
-  Remaining v0.8.3 items (open): add `AnthropicJudgeStrong` to the on-disk config + bump
-  its Version; upgrade `add\Multi-LLM-RunReviewHelper` to the current Run_* output layout.
-- v0.8.4 (DONE): GUI model clarity - header models-in-use panel (see GUI zones above).
-- v0.8.5 (DONE): GUI API key entry - Config settings menu + DPAPI PasswordBox dialog
-  (see API keys section above). No more headless run needed to set keys.
-- v0.8.6 (DONE): Judge verdict block in the final answer (better answer + A/B contribution
-  bar + scores), via new judge JSON field final_answer_source (see pipeline-and-judge.md).
-  FOLLOW-UP (deferred): Tasks-grid columns Best / A% / B% - needs the child summary
-  projection (task_results_summary.json) + GUI grid map + XAML columns.
-- v0.8.7 (DONE): Operator polish round 1 - removed "Cheap" from the UI (Quality/Review
-  judge), state-based Run button "Set API keys to run" -> opens keys dialog (see notes above).
-- v0.8.8 (DONE): Header credentials affordance - "Set API Keys" button + API-status
-  indicator top-right (best-from-mock), opens the same dialog (see API keys section).
-- v0.8.9 (DONE): Choose/edit tasks before run - Detect Tasks Phase 2 FOUNDATION (Edit Tasks
-  tab + tasks_input.json + MULTILLM_TASKS_FILE; see Detect Tasks section). Note: it also
-  counts tokens + USD cost per call/task/role/model + run total (actual, post-run); a PRE-run
-  estimate does NOT exist yet (that's the Task Queue cost-est column / pre-run estimator).
-- NEXT GOAL (user-set 2026-06-13): PRE-RUN ESTIMATOR. Before a run, estimate input/output
-  tokens, USD cost, and time PER TASK and TOTAL, shown in the GUI (per-task Est. Cost/Time
-  columns + totals). Uses the frozen `Get-EstimatedCostUsd(Provider,Model,In,Out)` + per-type
-  output budgets (`$MaxOutputTokens*` lines 214-226) + per-type timeouts (`$Timeout*Sec`
-  236-241) + replicate the routing (which models run per type) in a GUI helper. Output is an
-  estimate (clamp + label "~"); real cost still comes post-run. This feeds the per-task cost
-  in the Task Review feature below.
-- THEN: TASK REVIEW / SELECTIVE RUN (spec: OneDrive\...\WPF_Task_Review_Handoff.txt, 2026-06-13).
-  Rich version of v0.8.9: DataGrid of tasks with checkbox (IsSelected, default all) + #/type-
-  badge/title/excerpt/status-chip/route/est-cost, tri-state header check, dynamic Run button
-  ("Run N Tasks" / "Run N Selected" / disabled @0), Task Details right pane. RUN-FILTERING IS
-  ALREADY DONE (v0.8.9 tasks_input.json): unselected tasks just aren't written, so they're
-  never sent/judged/billed. CAVEAT: the spec assumes MVVM/computed-property bindings; this app
-  is NOT MVVM (single-file PS 5.1, manual control wiring), so SelectedCount/RunButtonText/etc.
-  are computed in CODE on checkbox events, not auto-bound. Badge taxonomy (Script/Audit/Summary/
-  Creative/GUI/General) must MAP to the real TaskType (simple/technical/code/ui_code/documentation/
-  creative). Live DataGridTemplateColumn binding needs ISE iteration (parser-only verifiable).
-- ALSO (operator-layout track): right-hand Run Status panel; collapsible+themed bottom log;
-  status bar Tasks 0/N. BIGGER (new features): left nav + Runs/Prompts/Presets history, Model
-  Comparison tab. Stay WPF/PS5.1; web mock-up is design spec, not a replatform.
-- TAB INDICES: de-hardcode via a `Select-MainTab -Header` helper (replaces SelectedIndex=0/1/3)
-  so tabs can be reordered/inserted safely - prereq for the Task Review tab work.
-- v0.9: Benchmark mode (Gate1 CSV); real RunFinalVerifier (verifier != judge).
+- v0.9: Benchmark mode (Gate1 CSV in `add\Multi-LLM-Gate1-Benchmark-Prompts.csv`); real
+  RunFinalVerifier (a verifier distinct from the judge).
+- Maintainability (proposed): a Validate-MultiLLM.ps1 harness (parser-check app + helper,
+  BOM/CRLF/ASCII/here-string balance, prove frozen functions untouched; optional Pester for
+  splitting/routing/cost/judge-markers/config fallback).
+- Versioning (DECIDED 2026-06-15): release discipline moves into git commits per version
+  (commit each version with the changelog entry as the message) instead of accumulating
+  versioned .ps1 files. `backups\` stays gitignored as a local safety net. Still bump the
+  in-file version + changelog every build.
 - v1.0: config + adapters + CLI + GUI + benchmark + presets.
-- Deferred: OpenRouter/LiteLLM backend, 4-5 answer models, separate Synthesizer, RAG,
+- Deferred / parked: judge-tier-by-complexity (low ROI; AD/security stays Full Opus by
+  policy); OpenRouter/LiteLLM backend, 4-5 answer models, separate Synthesizer, RAG,
   per-task model matrix.
+
+## Dev helper
+
+- `add\Multi-LLM-RunReviewHelper-v0.2.ps1` (DONE): reviews one completed run folder. v0.1 was
+  broken (a markdown backtick escaped a closing quote -> 21 parse errors) and assumed the old
+  flat output. v0.2 parses clean and understands the Run_*/Task_NN layout, reading answers from
+  answers_raw.json and validating judge files only when router_decision.json UseJudge = true.

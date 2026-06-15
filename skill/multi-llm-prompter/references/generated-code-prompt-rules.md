@@ -23,12 +23,26 @@ two layers separate: tool bugs -> edit the .ps1; bad generated output -> edit th
 
 ## Self-check rules (v0.7.8)
 
-- Any behavioral claim (e.g. "`$null -lt $date` returns False") must be PROVEN by a
-  runnable self-check inside the generated script, not just asserted in prose.
+- Any behavioral claim about PowerShell semantics must be PROVEN by a runnable self-check
+  inside the generated script, not just asserted in prose. The self-check must PASS on a
+  clean host (no false "UNEXPECTED" alarms) - see the v0.8.52 fix below.
 - Test null `LastLogonDate` via `$null -eq` (not `-lt`).
 - Guard `WhenCreated` in-script before using it.
 - Create the export folder before writing to it.
 - End with `return`, not `Exit`.
+
+## v0.8.52 rules (null-comparison correctness) - IMPLEMENTED
+
+A run review caught the prompts teaching an INVERTED fact: "`$null -lt [DateTime]` returns
+`$false`, so never-logged-in accounts are dropped." That is WRONG. In PS 5.1 `$null` sorts
+as LESS THAN any value, so `$null -lt`/`-le` are `$true` and a `-lt` filter INCLUDES nulls.
+Two root causes, both fixed in all four answer/judge system prompts:
+- (a) The rule text was NOT backtick-escaped in the double-quoted here-strings, so the model
+  literally received `Enabled -eq False` and `( -eq .LastLogonDate)` (the `$false`/`$null`/`$_`
+  interpolated away). Now backtick-escaped.
+- (b) The null-comparison rule now states the REAL PS 5.1 semantics and FORBIDS claiming `-lt`
+  drops nulls; the self-check must PASS on a clean host.
+This is the canonical example of the layering rule: it was fixed in the PROMPT, not the tool.
 
 ## v0.8.2 rules (AD inventory scripts) - IMPLEMENTED
 
