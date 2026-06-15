@@ -1,0 +1,11 @@
+MultiLLM.secrets.xml
+add/APIKeys OpenAI-Claude.txt
+backups/
+*.tmp
+*.log
+*.bak
+*.bak-*
+Run_*/
+__pycache__/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,5 @@
+Make skills
+
+Make it script reviewer or script writer
+
+GUI should show timing, which models are chosen, option to change the preferable models.

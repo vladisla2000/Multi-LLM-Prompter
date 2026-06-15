@@ -1,0 +1,105 @@
+﻿{
+    "Version":  "v0.8.47",
+    "Models":  {
+                   "OpenAIAnswer":  "gpt-4.1-mini",
+                   "AnthropicAnswer":  "claude-sonnet-4-6",
+                   "AnthropicJudge":  "claude-opus-4-8",
+                   "AnthropicJudgeStrong":  "claude-opus-4-8",
+                   "AnthropicJudgeCheap":  "claude-sonnet-4-6"
+               },
+    "Endpoints":  {
+                      "OpenAIChatCompletions":  "https://api.openai.com/v1/chat/completions",
+                      "AnthropicMessages":  "https://api.anthropic.com/v1/messages",
+                      "AnthropicVersion":  "2023-06-01",
+                      "ProxyUrl":  ""
+                  },
+    "Timeouts":  {
+                     "PerModelTimeoutSec":  30,
+                     "TotalRequestTimeoutSec":  45,
+                     "JudgeTimeoutSec":  90,
+                     "MaxRetries":  1,
+                     "TimeoutsByTaskType":  {
+                                                "simple":  30,
+                                                "technical":  60,
+                                                "documentation":  45,
+                                                "creative":  45,
+                                                "code":  75,
+                                                "ui_code":  90
+                                            }
+                 },
+    "OutputBudgets":  {
+                          "MaxOutputTokensByTaskType":  {
+                                                            "simple":  800,
+                                                            "creative":  1000,
+                                                            "documentation":  1400,
+                                                            "technical":  3000,
+                                                            "code":  4500,
+                                                            "ui_code":  6500
+                                                        },
+                          "MaxJudgeTokensByTaskType":  {
+                                                           "technical":  4500,
+                                                           "code":  6000,
+                                                           "ui_code":  8000
+                                                       },
+                          "EnableCompletenessCheck":  true,
+                          "CompletenessWarningMinLength":  80
+                      },
+    "Output":  {
+                   "OutputRoot":  "C:\\Temp\\MultiLLMPrompter",
+                   "RunName":  "Run",
+                   "ShowFinalAnswerOnScreen":  true,
+                   "OpenFinalMarkdown":  true,
+                   "OpenOutputFolder":  true,
+                   "ExportRunMetricsCsv":  true,
+                   "CostBudgetUsd":  10
+               },
+    "Behavior":  {
+                     "SkipMultiForSimple":  true,
+                     "SimplePromptMaxChars":  300,
+                     "CodeTriggersOverrideDocumentation":  true,
+                     "RunFinalVerifier":  false,
+                     "UseCheapJudgeForReview":  true,
+                     "RunFinalVerifierStatus":  "Reserved/no-op in v0.7.5",
+                     "TaskSplitterMode":  "Heuristic",
+                     "TaskWorkMode":  "Auto",
+                     "UiCodeAutoWorkMode":  "Review",
+                     "MaxTasksPerPrompt":  10,
+                     "PromptPreset":  "MultiTaskDemo",
+                     "SkipMissingInputTasks":  true,
+                     "CreativeTasksUseSingleModel":  true,
+                     "CreativeTasksUseJudge":  false,
+                     "DocumentationTasksUseSingleModel":  true,
+                     "DocumentationTasksUseJudge":  false,
+                     "SimpleTasksUseJudge":  false,
+                     "PersonaMode":  "Off",
+                     "PersonaA":  "architect",
+                     "PersonaB":  "senior_dev"
+                 },
+    "CostPer1MTokens":  {
+                            "OpenAI|gpt-4.1-mini":  {
+                                                        "InputUsd":  0.4,
+                                                        "OutputUsd":  1.6
+                                                    },
+                            "Anthropic|claude-sonnet-4-6":  {
+                                                                "InputUsd":  3,
+                                                                "OutputUsd":  15
+                                                            },
+                            "Anthropic|claude-opus-4-8":  {
+                                                              "InputUsd":  5,
+                                                              "OutputUsd":  25
+                                                          },
+                            "Anthropic|claude-haiku-4-5":  {
+                                                               "InputUsd":  1,
+                                                               "OutputUsd":  5
+                                                           }
+                        },
+    "Backends":  {
+                     "DefaultAnswerProviders":  [
+                                                    "OpenAI",
+                                                    "Anthropic"
+                                                ],
+                     "JudgeProvider":  "Anthropic",
+                     "OpenRouterEnabled":  false,
+                     "LiteLLMEnabled":  false
+                 }
+}
