@@ -1,0 +1,441 @@
+# HANDOFF - Multi-LLM Prompter (RU)
+
+> Параллельный русский перевод [HANDOFF-Multi-LLM-Prompter.md](HANDOFF-Multi-LLM-Prompter.md).
+> Английская версия - источник истины; при расхождении ориентируйтесь на неё.
+> Имена файлов, функций, env-переменных, путей, маркеров и идентификаторов кода намеренно
+> оставлены на английском.
+
+Последнее обновление: 2026-06-16
+Текущая версия: **v0.8.55** (выпущена, ежедневный рабочий инструмент / daily driver).
+Файл: `Multi-LLM-Prompter-v0_8_55.ps1` (~9 501 строк, ~416 КБ).
+
+Статус: **daily driver.** Файл механически чист (0 ошибок парсера, UTF-8 BOM, тело только ASCII,
+CRLF, сбалансированные here-strings). Phase 2 (панель обнаруженных/редактируемых задач) -
+**ВЫПУЩЕНА**, она вышла постепенно в v0.8.9 - v0.8.40, а не одним релизом v0.8.3, как предполагал
+старый handoff.
+
+Цепочка версий (кратко): v0.7.x (оболочка GUI + headless-дочерний процесс, упрочнение
+cost/judge) -> v0.8.0 (Full всегда использует сильный судью) -> v0.8.1/0.8.2 (ясность + правила
+AD-промптов) -> v0.8.3 (пути config/secrets относительно скрипта) -> v0.8.4 - v0.8.8 (панель
+моделей в шапке, ввод API-ключей в GUI, блок вердикта судьи, операторские подписи)
+-> v0.8.9 - v0.8.40 (Phase 2: редактируемый список задач, tasks_input.json, переопределения
+Type/WorkMode по задаче, грид ревью задач, оценки, боковая панель + инспектор, меню, персоны,
+gate уточнений, бюджет стоимости) -> v0.8.41 - v0.8.51 (бэкенд персон, полировка, сигнал
+завершения запуска, бейдж версии, тумблер лога) -> v0.8.52 (исправление корректности
+генерируемого кода: семантика `$null -lt [DateTime]`) -> v0.8.53 (Stop убивает всё дерево
+процессов бэкенда) -> v0.8.54 (RunFinalVerifier, opt-in) -> v0.8.55 (переключатель верификатора
+в GUI).
+
+## ЭТА СЕССИЯ (2026-06-16) - ЧИТАТЬ ПЕРВЫМ
+
+Вся работа ниже находится в git-ветке **`chore/docs-helper-harness`** - **10 коммитов впереди
+`main`, запушено в origin, НЕ влито.** PR не открыт (`gh` не установлен на этой машине - открыть
+через GitHub UI: https://github.com/vladisla2000/Multi-LLM-Prompter/pull/new/chore/docs-helper-harness).
+
+Что выпущено в этой сессии:
+- Ресинк всей документации со устаревшего handoff v0.8.2 на живой код (этот файл, DEVELOPER.md,
+  референсы скилла multi-llm-prompter + перепакованные .skill/.zip).
+- Починен + переписан run-review helper под текущую раскладку папки запуска ->
+  `Multi-LLM-RunReviewHelper-v0.3.ps1`.
+- Добавлен **`Validate-MultiLLM.ps1`** (корень репозитория) - гейт перед выпуском (статические
+  проверки app + helper + benchmark; инварианты; поведенческие тесты замороженных функций
+  cost/routing через извлечение из AST). Запускать перед каждым выпуском; должно быть PASS.
+- v0.8.53: Stop теперь убивает всё дерево процессов бэкенда (после Stop не остаётся "осиротевших"
+  API-вызовов).
+- v0.8.54: RunFinalVerifier - верификатор, ОТЛИЧНЫЙ от судьи (opt-in, ВЫКЛ по умолчанию).
+- v0.8.55: чекбокс "Run final verifier" в GUI + env-переменная `MULTILLM_RUNVERIFIER`.
+- Добавлен раннер бенчмарка Gate-1 `add\Multi-LLM-Benchmark-v0.2.ps1`; и он, и helper показывают
+  результат верификатора из `final_verification.json`.
+- Принята схема версионирования "backup-then-rename" (раздел 7) и записан allowlist read-only
+  MCP-инструментов в `.claude\settings.json`.
+
+ЗАБЛОКИРОВАНО / В ОЖИДАНИИ (самое важное для следующей сессии):
+- **НЕТ API-КЛЮЧЕЙ на этой машине** (нет `MultiLLM.secrets.xml`, нет `OPENAI_API_KEY` /
+  `ANTHROPIC_API_KEY`). Поэтому v0.8.54 (LLM-вызов верификатора), v0.8.55 (рантайм верификатора в
+  GUI) и ЖИВОЙ бенчмарк собраны и проверены статически/юнит-тестами, но **никогда не тестировались
+  вживую**. ПЕРВЫЙ следующий шаг: задать ключи (GUI -> Set API keys, что пишет DPAPI-файл секретов,
+  либо две env-переменные), затем провести живую валидацию верификатора end-to-end и запустить
+  бенчмарк.
+- Проверка фикса промпта v0.8.52 (в перегенерированном AD-inventory-скрипте есть DistinguishedName
+  + New-Item -Force) остаётся watch-пунктом - подтвердить на ближайшем удобном AD-запуске.
+- Открыть PR для `chore/docs-helper-harness` (или влить в main).
+- v1.0 (консолидация config/adapters/CLI) - следующая крупная веха, нужен scoping, а не слепая
+  разработка.
+
+---
+
+## 1. ЧТО ЭТО ЗА ПРОЕКТ
+
+Однофайловый инструмент на PowerShell 5.1: отправляет один промпт двум LLM-моделям-ответчикам
+параллельно, модель-судья (Judge) сравнивает/синтезирует (Full) или валидирует/ревьюит
+(Light/ReviewOnly) ответы, затем пишет финальный ответ плюс полный аудит-трейл на диск. Фронтенд -
+WPF GUI; ТОТ ЖЕ .ps1 запускается как скрытый headless-дочерний процесс для конвейера.
+
+- GUI Run: пишет gui_prompt.txt, создаёт Run_<timestamp>, опционально пишет tasks_input.json,
+  стартует скрытый дочерний процесс (env MULTILLM_HEADLESS=1 + контракт ниже).
+- Дочерний процесс: грузит конфиг, строит список задач (из tasks_input.json, если задан, иначе
+  сплиттер), по каждой задаче роутер -> ответы (Start-Job, параллельно) -> Judge -> по-задачный
+  final_answer.md + сводный final_answer.md на уровне запуска + метрики/логи.
+- GUI DispatcherTimer 1 с: tasks.json -> всего; Task_NN/final -> прогресс (цвета строк по задачам
+  по мере завершения); хвост транскрипта -> Run Log; дочерний процесс завершился -> загрузка
+  результатов + цвет/звук завершения.
+- Detect Tasks: предпросмотр разбиения на стороне GUI (без дочернего процесса, без API),
+  заполняет редактируемый грид задач.
+- Stop: убивает дочерний процесс.
+
+Нигде нет блоков param() (соглашение пользователя). Все параметры GUI->дочерний передаются через
+переменные окружения.
+
+### Контракт переменных окружения (GUI -> headless-дочерний)
+
+Исходный набор:
+- MULTILLM_HEADLESS "1" = запустить конвейер, подавить интерактивные запросы/попапы
+- MULTILLM_PROMPT_FILE путь к gui_prompt.txt (UTF-8 BOM)
+- MULTILLM_RUNFOLDER папка запуска, заранее созданная GUI
+- MULTILLM_SPLITMODE Heuristic / None
+- MULTILLM_WORKMODE Auto / Review / Script
+- MULTILLM_UICODE_MODE Review / Script (используется при WORKMODE=Auto)
+- MULTILLM_MODEL_OPENAI id модели-ответчика A
+- MULTILLM_MODEL_ANTHROPIC id модели-ответчика B
+- MULTILLM_MODEL_JUDGE id выбранного судьи (Light/ReviewOnly-не-cheap + только отображение)
+- MULTILLM_MODEL_JUDGE_CHEAP id дешёвого/"review" судьи (Light/ReviewOnly при включённом тумблере)
+- MULTILLM_CHEAP_JUDGE "1"/"0" тумблер дешёвого судьи
+
+Добавлено после v0.8.2:
+- MULTILLM_TASKS_FILE (v0.8.9) путь к tasks_input.json. Если задана И файл существует, дочерний
+  процесс грузит этот явный список задач (массив {TaskId, TaskTitle, PromptText, TypeOverride,
+  WorkModeOverride}) ВМЕСТО запуска сплиттера. Отсутствует/пусто -> Split-UserPromptIntoTasks как
+  раньше (страховка обратной совместимости / CLI).
+- MULTILLM_PERSONA_MODE (v0.8.41) Off / Fixed
+- MULTILLM_PERSONA_A (v0.8.41) ключ персоны для Answer A (architect / ui_ux / devils_advocate
+  / qa / senior_dev / none)
+- MULTILLM_PERSONA_B (v0.8.41) ключ персоны для Answer B
+- MULTILLM_RUNVERIFIER (v0.8.55) "1"/"0" - включить финальный верификатор для этого запуска
+  (чекбокс "Run final verifier" в GUI). Отсутствует -> config/default $RunFinalVerifier (CLI не
+  меняется).
+
+Приоритет: env применяется ПОСЛЕ загрузки конфига -> выбор в GUI побеждает конфиг, который
+побеждает дефолты в начале скрипта.
+
+Для сильного судьи env-переменной НЕТ (так задумано, v0.8.0). $AnthropicModel_JudgeStrong (по
+умолчанию claude-opus-4-8) берётся только из дефолта в начале скрипта или конфига
+(Models.AnthropicJudgeStrong). GUI не может ослабить его для конкретного запуска. Режим Full всегда
+использует его.
+
+---
+
+## 2. ТЕКУЩИЙ ФАЙЛ И ПАПКА ПРОЕКТА
+
+`Multi-LLM-Prompter-v0_8_55.ps1` - ~9 501 строк. PS 5.1, исходник только ASCII (Unicode только как
+сущности `&#x...;` в XAML here-strings), UTF-8 BOM, CRLF, `cls` первой строкой. По умолчанию
+$LaunchGui = $true; $false запускает классический CLI-конвейер.
+
+Папка проекта: `C:\_Combined\Multi-LLM-Prompter\` (это живая рабочая копия).
+- MultiLLM.config.json - модели, эндпоинты, таймауты, бюджеты вывода, поведение, CostPer1MTokens.
+  Его поле "Version" может отставать от скрипта (сейчас v0.8.47 против скрипта) - это ожидаемо и
+  безвредно; загрузка конфига защищает каждый ключ через IsNullOrWhiteSpace.
+- MultiLLM.secrets.xml - DPAPI Export-Clixml для SecureString (OpenAIKey, AnthropicKey), привязка
+  к машине+пользователю. Можно (пере)создать из GUI (Config -> Set API keys) или одним запуском с
+  $LaunchGui = $false.
+- $ConfigPath / $SecretsPath (v0.8.3+): резолвятся относительно папки СКРИПТА, с фолбэком на старый
+  фиксированный путь `C:\_Combined\H_Productivity\Multi-LLM-Prompter` (которого НЕТ на диске - это
+  только фолбэк). Предпочесть файл рядом с .ps1, затем legacy, иначе создать рядом с .ps1.
+- add\ - dev-хелперы: Multi-LLM-Gate1-Benchmark-Prompts.csv (вход бенчмарка),
+  Multi-LLM-Benchmark-v0.2.ps1 (раннер бенчмарка Gate-1; гоняет headless-конвейер по CSV и сообщает
+  routing/cost/judge), Multi-LLM-RunReviewHelper-v0.3.ps1 (анализатор одного запуска; v0.1 был
+  сломан + только под плоскую раскладку, заменён), My Ideas.txt.
+- Validate-MultiLLM.ps1 (корень репозитория) - гейт валидации перед выпуском для app + хелперов.
+
+Выходные данные рантайма: `C:\Temp\MultiLLMPrompter\`
+- gui_session.log - постоянный лог GUI, дописывается во всех сессиях.
+- Run_<timestamp>\ - одна папка на запуск (точная раскладка в разделе 3).
+
+---
+
+## 3. БЭКЕНД-КОНВЕЙЕР
+
+### Модели (дефолты; ответы + выбранный/дешёвый судья переопределяемы из GUI/config/env)
+- Answer A: OpenAI gpt-4.1-mini (chat/completions)
+- Answer B: Anthropic claude-sonnet-4-6 (v1/messages, version 2023-06-01)
+- Judge Strong: Anthropic claude-opus-4-8 (ВСЕГДА для Full; переопределение только через config,
+  никогда из GUI)
+- Judge select: $AnthropicModel_Judge (комбобокс Judge в GUI; отображение для Light/ReviewOnly)
+- Judge Cheap/Review: $AnthropicModel_JudgeCheap (Light/ReviewOnly при включённом тумблере)
+
+В живых запусках часто берут более дешёвые модели-ответчики (например haiku-4-5 для Answer B);
+сильный судья Full остаётся opus в любом случае.
+
+### Список задач
+Либо явный список из GUI (tasks_input.json через MULTILLM_TASKS_FILE), либо эвристический сплиттер.
+Split-UserPromptIntoTasks разбивает многострочные промпты только когда >=2 строк выглядят как
+отдельные задачи И всего непустых строк <= 12 (Mode None отключает; MaxTasksPerPrompt=10);
+однозадачные промпты проходят как есть. Get-TaskType назначает тип. Обе - функции верхнего уровня,
+и предпросмотр GUI Detect Tasks вызывает ИХ ЖЕ, так что предпросмотр == разбиение при запуске. Не
+плодить второй сплиттер.
+
+### Роутер: типы задач и политика маршрутизации
+Типы: simple / technical / code / ui_code / documentation / creative.
+- code, ui_code, technical: OpenAI + Sonnet + Judge
+- documentation: предпроверка MissingInput; источник отсутствует -> SKIPPED, 0 AI-вызовов
+- creative: только Sonnet, без Judge
+- simple: только OpenAI
+
+Get-RouterDecision возвращает PSCustomObject: TaskType, UseOpenAI, UseAnthropicAnswer, UseJudge,
+WorkMode, WorkModeOverrideApplied, JudgeModePolicy (Auto/ReviewOnly/Skipped), Reason, таймауты,
+бюджеты токенов. По-задачные TypeOverride / WorkModeOverride (v0.8.39/0.8.40) применяются как
+GATES вокруг мест вызова - ТЕЛА замороженных функций не трогаются.
+
+### WorkMode (Auto / Review / Script) - Get-TaskWorkMode  [ЛОГИКА ЗАМОРОЖЕНА]
+Review = заметки + небольшие сниппеты; Script = полноценные запускаемые скрипты. Порядок Auto
+(важен):
+1. ui_code: явное complete/full/runnable/create/write script -> Script, иначе Review.
+2. technical + формулировка исправления -> Script (ДО общего правила review).
+3. общее review/analyze/audit/suggest/explain-the-bug -> Review.
+4. code + script/code/function/wpf/xaml -> Script.
+5. technical-фолбэк / documentation / creative / simple -> Review.
+НЕ менять эту функцию, кроме комментария с версией.
+
+### Judge  [КРИТИЧНО]
+Контракт маркеров (не менять необдуманно; markdown внутри JSON ломает ConvertFrom-Json):
+- ---JUDGE_JSON--- (маленький чистый JSON; без markdown/кода внутри)
+- ---FINAL_ANSWER_MARKDOWN--- (markdown/код разрешены)
+- ---IMPROVED_PROMPT--- ("No improved prompt." если нет)
+Режимы: Full (2 ответа, сравнить+синтез), Light (1 ответ, валидация), ReviewOnly (заметки/вердикт).
+Judge JSON: best_answer_id, confidence, scores.{A,B}.{6 критериев}, problems_found[],
+best_parts_reused[], final_answer_source (v0.8.6; вклад A/B в сумме 100). Читается через
+Get-JudgeVerdict (защитно). Выводится как блок "=== Judge verdict ===" перед сводным финальным
+ответом (Format-JudgeVerdictBlock).
+
+ПОЛИТИКА МОДЕЛИ СУДЬИ (v0.8.0; проверено вживую):
+- Full -> ВСЕГДА $AnthropicModel_JudgeStrong (claude-opus-4-8). Комбобокс Judge и тумблер cheap
+  ИГНОРИРУЮТСЯ. Если выбранный судья != strong, пишется [WARN].
+- Light / ReviewOnly -> дешёвый судья если $UseCheapJudgeForReview, иначе выбранный судья.
+Реализовано по-задачно: `if ($JudgeMode -eq "Full") { $JudgeModelToUse = $AnthropicModel_JudgeStrong }`.
+JudgeModelUsed несётся в каждом TaskResult и показывается в колонке Judge Model.
+
+### Персоны (v0.8.41) - статические, бэкенд
+Переопределяемая в конфиге таблица персон (architect / ui_ux / devils_advocate / qa / senior_dev /
+none). PersonaMode Off (по умолчанию, побайтово как раньше) или Fixed; в Fixed к Answer A/B
+ПРЕДДОБАВЛЯЕТСЯ PersonaA/PersonaB в КОПИЮ эффективного промпта для каждой модели. Судья и
+effective_prompt.txt остаются без персон; общий EffectivePromptText не мутируется. Каждая персона
+оканчивается "замком правил", чтобы не переопределить правила форматирования / PS 5.1 /
+AD-безопасности / ASCII / self-check.
+
+### Gate уточнений (v0.8.25/0.8.26) - опция GUI
+"Ask questions if prompt is vague" с режимом Local/AI. Local = бесплатная эвристика; AI =
+использует настроенного Anthropic review-судью, чтобы решить, нужны ли уточнения, и сгенерировать
+вопросы ДО старта настоящего запуска.
+
+### Встроенные правила генерации (промпты ответа + судьи)
+СИСТЕМНЫЕ промпты ответа и судьи - here-strings В ДВОЙНЫХ КАВЫЧКАХ, поэтому PowerShell
+интерполирует каждый $-токен во время выполнения job. ПРАВИЛО: любой инструкционный $ в этих
+промптах ОБЯЗАН быть экранирован бэктиком (`$true, `$false, `$null, `$_), иначе модель получит
+интерполированный мусор. Это был реальный латентный баг (v0.8.2) и корень фикса v0.8.52.
+Встроенные правила: cls, переменные вверху, без param, if/else, Try/Catch, никогда Export-Csv
+после Format-Table, @() перед .Count, вывод только ASCII, return а не Exit, создавать папки
+экспорта через New-Item -Force, булевы в AD -Filter используют `$true/`$false С знаком доллара,
+AD-inventory включает DistinguishedName и опускает константные колонки, поведенческие утверждения
+доказываются запускаемым self-check. v0.8.52: правило сравнения с null теперь даёт РЕАЛЬНУЮ
+семантику PS 5.1 ($null сортируется как МЕНЬШЕ любого значения, поэтому -lt/-le ВКЛЮЧАЮТ null) и
+запрещает старое инвертированное утверждение; self-check должен проходить (PASS) на чистом хосте.
+
+### Параллелизм / стоимость / метрики
+Start-Job на каждую модель-ответчик; таймауты по-модельный + общий + судьи (по умолчанию 90 с);
+ретрай x1 на null/429/5xx, никогда на 400/401/403. Вспомогательные функции намеренно ДУБЛИРУЮТСЯ
+внутри scriptblock'ов job (job'ы PS 5.1 не наследуют функции сессии) - НЕ рефакторить. Стоимость из
+конфига CostPer1MTokens по ключу "Provider|Model". Get-EstimatedCostUsd заморожен побайтово.
+Стоимость неизвестной модели сообщается (cost_warnings.json), никогда не молча.
+
+### Раскладка папки запуска (v0.8.x; KeepTaskSubfolders = $true)
+Run_<timestamp>\ (корень - агрегаты):
+- input_prompt.txt, tasks.json, tasks_input.json (явный список GUI), gui_prompt.txt
+- task_results_summary.json / .md (по-задачные поля: TaskId, TaskType, WorkMode, Success,
+  AnswerCount, JudgeMode, JudgeModelUsed, CompletenessWarning/Reason, Input/Output/TotalTokens,
+  EstimatedCostUsd, TaskFolder, Error)
+- final_answer.md (сводный, все задачи), timing_summary.json
+- cost_summary_by_role.json, cost_summary_by_model.json, cost_warnings.json,
+  completeness_warnings.json, errors.json
+- stage_metrics.csv, request_metrics.csv, run_metrics.csv (условно)
+- console_transcript.txt, gui_run_report.json
+- подпапки Task_NN\ (по одной на задачу, NN = TaskId с ведущими нулями)
+
+Task_NN\ (по задаче):
+- input_prompt.txt, effective_prompt.txt, router_decision.json, missing_input_check.json
+- answers_raw.json (ответы; файлов answer_A/answer_B .md БОЛЬШЕ НЕТ), errors.json
+- run_metrics.csv, request_metrics.csv, stage_metrics.csv
+- judge_raw.json, judge_text.txt, judge_scores_text.json, judge_parsed.json (только когда судья
+  отработал), selected_answer.md (Light/ReviewOnly), final_answer.md (по задаче)
+- final_verification.json (v0.8.54; только когда включён RunFinalVerifier)
+
+Run-review helper (add\Multi-LLM-RunReviewHelper-v0.3.ps1) понимает эту раскладку и считает файлы
+судьи условными в зависимости от router_decision.json UseJudge.
+
+---
+
+## 4. GUI
+
+Зоны (vlad-wpf-design): верхнее меню (Settings / Help) + левая боковая навигация + Header
+(заголовок + бейдж версии + панель маршрута моделей + статус API-ключей + Set API Keys) / Input /
+TabControl / Actions / тёмный сворачиваемый Log / правый инспектор / StatusBar.
+
+Input: Prompt (многострочный Consolas) | Preset | Splitter (Heuristic/None) | Work mode |
+UI auto mode | gate уточнений (Local/AI) | Model A | Model B | Judge | тумблер review-судьи |
+чекбокс "Run final verifier". Комбобоксы моделей IsEditable=True (можно вводить id; намеренное
+исключение). У Preset/Work mode/UI mode акцентные подписи.
+
+Вкладки:
+- Full Answer (сводный ответ по всем промптам).
+- Tasks - двойной режим: редактируемый предзапусковый грид ревью задач (Detect Tasks заполняет;
+  чекбокс Select/Run в строке, мастер-чекбокс в шапке, переопределения Type + Work mode в панели
+  деталей, по-строчные оценки route/cost/tokens/judge) и read-only результаты после запуска (живые
+  цвета Status по задачам по мере завершения). Колонки:
+  Id/Type/Work/OK/Ans/Judge/JudgeModel/Compl/Tokens/Cost(USD,ILS)/Title/Error.
+- Metrics (тайминг + cost-by-role + cost-by-model + cost-warnings).
+- Run Log.
+
+Правый инспектор: Run Details / Cost (настраиваемый бюджет Output.CostBudgetUsd, прогноз против
+факта, USD + примерно ILS по курсу 3.7) / Token Usage / Latency / Run Health.
+
+Actions: Detect Tasks | Run (подпись отражает состояние API-ключей; авто-Detect, если задач нет) |
+Full Answer (отдельное окно) | Copy | Improved Prompt | Run Folder | Config (меню: открыть конфиг /
+задать API-ключи) || Stop | Exit. Завершение запуска проигрывает звук и перекрашивает статус-бар.
+
+Безопасность/обвязка: STA-guard перед Add-Type; проверка SelfPath; предпроверка API-ключей + ввод
+ключей в GUI; UIReady; таймер останавливается + дочерний процесс убивается при Closing.
+
+---
+
+## 5. ИСТОРИЯ ВЕРСИЙ (сжато; полный нумерованный changelog в шапке .ps1)
+
+- v0.7.0 - v0.7.9: WPF GUI + headless-дочерний; логи/отчёт; комбобоксы WorkMode; раскраска строк;
+  дешёвый судья; редактируемые комбобоксы моделей; "занятый" серый Run; отдельное окно Full Answer;
+  cost-by-model; WARN для неизвестной модели; правила self-check ответа/судьи; токены/стоимость по
+  задаче; Routing Notes; переименование "Final"->"Full Answer".
+- v0.8.0 - v0.8.2: Full всегда сильный судья (+WARN при несовпадении, JudgeModelUsed); лог/шапка
+  ясности моделей + предпросмотр Detect Tasks; устойчивые правила AD-inventory + фикс
+  $-экранирования в промптах.
+- v0.8.3 - v0.8.8: пути config/secrets относительно скрипта; панель моделей в шапке; ввод
+  API-ключей в GUI (маскированно, DPAPI); блок вердикта судьи в финальном ответе; операторские
+  подписи + Run по состоянию + статус API-ключей в шапке.
+- v0.8.9 - v0.8.40 (Phase 2): редактируемый список Edit/Tasks + tasks_input.json +
+  MULTILLM_TASKS_FILE; грид ревью задач с select/Run-selected, оценки, панель деталей; боковая
+  навигация + правый инспектор + двухпанельная раскладка; верхнее меню; настраиваемый бюджет;
+  прогноз-против-факта; отображение в шекелях; по-задачные переопределения маршрута (бэкенд
+  v0.8.39, GUI v0.8.40).
+- v0.8.41 - v0.8.51: бэкенд персон; полировка грида/панелей; звук+цвет завершения; живой пересчёт
+  judge/cost при смене модели/судьи; авто-Detect на Run; подписанные детали задачи; цвета прогресса
+  по задаче; действия боковой навигации; бейдж версии; тумблер Collapse/Expand лога.
+- v0.8.52: фикс корректности генерируемого кода - исправлено правило `$null -lt [DateTime]` (PS 5.1:
+  $null сортируется как МЕНЬШЕ любого значения, поэтому -lt/-le ВКЛЮЧАЮТ null), переподтверждено
+  бэктик-экранирование всех инструкционных $ в четырёх блоках промптов ответа/судьи, и self-check
+  обязан проходить (PASS) на чистом хосте. Только текст промптов; замороженные функции, маркеры
+  судьи и конвейер не тронуты.
+- v0.8.53: Stop теперь убивает всё дерево процессов бэкенда (Stop-ChildProcessTree: taskkill /T, с
+  рекурсивным фолбэком через Win32_Process) из кнопки Stop и обработчика Closing окна, так что
+  остановленный запуск не оставляет "внуков" Start-Job (ответы/судья) с висящими API-вызовами.
+  Только GUI/teardown; замороженные функции, политика судьи, маршрутизация и расчёт стоимости не
+  тронуты.
+- v0.8.54: реализован RunFinalVerifier (opt-in, ВЫКЛ по умолчанию). Гейтованный пост-проход после
+  цикла по задачам независимо проверяет финальный ответ каждой задачи (Invoke-AnthropicVerifier -
+  HTTP склонирован с судьи; парсер Get-VerifierVerdict; пишет Task_NN/final_verification.json + сводку
+  запуска). Верификатор - НЕ судья; по умолчанию модель сильного судьи. Поведение по умолчанию
+  побайтово прежнее; замороженные функции + контракт судьи не тронуты. Живой LLM-путь ещё не
+  тестировался (нет ключей в окружении сборки); парсер (14/14) и гейтинг по умолчанию-выкл -
+  протестированы.
+- v0.8.55: переключатель верификатора в GUI. Новый чекбокс "Run final verifier" (ChkRunVerifier)
+  передаёт новую env-переменную MULTILLM_RUNVERIFIER дочернему процессу, который задаёт
+  $RunFinalVerifier для этого запуска (CLI не меняется, когда переменной нет). Выкл по умолчанию.
+  Smoke-тест загрузки XAML пройден + harness PASS 48/0; рантайм ещё требует запуска GUI с ключами
+  для подтверждения.
+
+---
+
+## 6. ИЗВЕСТНЫЕ ПРОБЛЕМЫ / WATCH-СПИСОК
+
+1. [ИСПРАВЛЕНО v0.8.53] Stop теперь завершает всё дерево процессов бэкенда (Stop-ChildProcessTree:
+   taskkill /PID <id> /T /F, с рекурсивным фолбэком Win32_Process), подключено к кнопке Stop и
+   обработчику Closing окна, так что остановленный запуск больше не оставляет "внуков" Start-Job с
+   висящими API-вызовами. Проверено на синтетическом дереве процессов родитель->дети.
+2. [watch] Ложные срабатывания completeness-warning (окончания markdown без пунктуации) - намеренно
+   не исправлено; собираем статистику.
+3. [info] Поле "Version" в конфиге отстаёт от версии скрипта - безвредно по дизайну.
+4. [закрыто] Дешёвый судья протекал в Full (v0.8.0). Молчаливая стоимость неизвестной модели
+   (v0.7.7). Устаревший конфиг / неверная цена Opus (v0.7.5+). $-интерполяция в промптах (v0.8.2 +
+   v0.8.52).
+5. [сделано] RunReviewHelper переписан до v0.2 (фикс парсинга + текущая раскладка Run_*/Task_NN),
+   затем v0.3 (показывает верификатор).
+
+---
+
+## 7. ROADMAP
+
+- v0.9 Benchmark mode (ВЫПУЩЕНО - раннер v0.2): add\Multi-LLM-Benchmark-v0.2.ps1 гоняет
+  headless-конвейер по Gate1 CSV и сообщает точность маршрутизации (факт против ExpectedTaskType),
+  лучший ответ судьи и cost/tokens/time (benchmark_results.csv + benchmark_summary.md). Режимы DryRun
+  (по умолчанию) и report-only; живой запуск тратит реальные деньги. Субъективный вердикт Gate-1
+  (бьёт ли финал оба одиночных ответа) остаётся ручной проверкой - его авто-оценка это
+  RunFinalVerifier.
+- v0.9 RunFinalVerifier (ВЫПУЩЕНО v0.8.54, opt-in / ВЫКЛ по умолчанию): верификатор, отличный от
+  судьи. Гейтованный пост-проход; включается чекбоксом "Run final verifier" в GUI (v0.8.55,
+  MULTILLM_RUNVERIFIER) или config Behavior.RunFinalVerifier = true (или $RunFinalVerifier). Пишет
+  Task_NN/final_verification.json + final_verification_summary.json; модель верификатора по умолчанию
+  сильный судья (переопределение $VerifierModel/$VerifierMaxTokens). Нужен живой запуск с ключами,
+  чтобы подтвердить LLM-путь end-to-end (в окружении сборки ключей не было).
+- Validation harness (ВЫПУЩЕНО): Validate-MultiLLM.ps1 парсер-чекает app + helper + benchmark,
+  проверяет BOM/CRLF/ASCII/баланс here-string + отсутствие param() верхнего уровня, доказывает, что
+  замороженные функции присутствуют и поведенчески не изменились (эталонные кейсы cost/routing), и
+  проверяет маркеры судьи + enforcement Full->strong. Запускать перед каждым выпуском.
+- Версионирование (РЕШЕНО 2026-06-15, уточнено 2026-06-16): на каждое изменение главного скрипта
+  порядок "backup, потом переименовать новую версию":
+  1. скопировать текущий Multi-LLM-Prompter-vX.ps1 в backups\ (локальная страховка, в gitignore),
+  2. внести изменение,
+  3. git mv в vX+1 + поднять в файле $ToolVersion/шапку + добавить нумерованную запись changelog,
+  4. запустить Validate-MultiLLM.ps1,
+  5. один git-коммит на версию.
+  backups\ никогда не раздувает репозиторий (в gitignore); история git - канонический реестр версий.
+  Единственный живой Multi-LLM-Prompter-v*.ps1 - рабочий файл.
+- ПОЗЖЕ / отложено: judge-tier-by-complexity (низкий ROI для AD/security-нагрузки, которая по
+  политике остаётся Full Opus). Отложено: бэкенд OpenRouter/LiteLLM, 4-5 моделей-ответчиков,
+  отдельный синтезатор, RAG, матрица моделей по задаче.
+
+---
+
+## 8. ОБЯЗАТЕЛЬНЫЕ СОГЛАШЕНИЯ (этого проекта)
+
+- PS 5.1 / ISE. UTF-8 BOM, CRLF. Исходник только ASCII; Unicode ТОЛЬКО как XAML-сущности `&#x...;`.
+  `cls` первой строкой. Нет param() верхнего уровня (вместо него env). Нет тернарника / `??`. Только
+  полные файлы; никогда не выбрасывать фичи; ВСЕГДА поднимать версию везде + добавлять нумерованную
+  запись changelog; никогда не переиспользовать номер версии.
+- ПРОМПТ-here-strings в двойных кавычках: экранировать КАЖДЫЙ инструкционный $ бэктиком, иначе
+  модель получит интерполированный мусор.
+- WPF: палитра/зоны vlad-wpf-design; скруглённые кнопки в Border-обёртке; никакого -f на
+  XAML-строках (только .Replace); инлайн-стили в окнах из отдельных here-string; guard UIReady;
+  таймеры останавливаются при закрытии; ComboBox IsEditable=False КРОМЕ комбобоксов моделей.
+  Обработчики Add_Click используют $Script:-глобалы.
+- НЕСУЩИЕ, не "чистить": контракт маркеров судьи; паттерн дублированных функций в job'ах; логика
+  Get-TaskType / Get-TaskWorkMode; Get-EstimatedCostUsd; enforcement Full->strong судьи.
+- Разделять слои: дефект в СГЕНЕРИРОВАННОМ скрипте чинится правкой ПРАВИЛ промпта ответа/судьи, а не
+  кода самого инструмента.
+- Валидация перед выпуском (доступна реальная проверка синтаксиса, без выполнения / без API-вызовов):
+  `[System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$t,[ref]$errs)` (0 ошибок),
+  есть BOM, `cls` первой строкой, 0 не-ASCII байт в теле, here-strings сбалансированы (@" == "@),
+  баланс скобок только-кода == 0, ожидаемое число Add_Click, диф замороженных функций для
+  доказательства неизменности, grep что $-токены промптов остаются бэктик-экранированными.
+- Логи/выводы под C:\Temp. Цвет никогда не единственный носитель смысла.
+
+---
+
+## 9. ПЕРВЫЙ ПРОМПТ ДЛЯ СЛЕДУЮЩЕЙ СЕССИИ (рекомендация)
+
+"Multi-LLM Prompter: вот HANDOFF и v0.8.55 (daily driver, механически чист). ВНИМАНИЕ: работа
+прошлой сессии в ветке chore/docs-helper-harness (10 коммитов впереди main, запушено, НЕ ВЛИТО) -
+сначала переключиться/влить/открыть PR. Phase 2 + RunFinalVerifier (opt-in) ВЫПУЩЕНЫ. Загрузить
+скилл multi-llm-prompter с ps-wpf-core (+ vlad-wpf-design для GUI). Уважать замороженные функции
+(Get-TaskType / Get-TaskWorkMode / Get-EstimatedCostUsd), контракт маркеров судьи и политику
+Full->strong-судьи. СНАЧАЛА: если заданы API-ключи, провести живую валидацию верификатора (включить
+'Run final verifier' / MULTILLM_RUNVERIFIER) end-to-end и запустить бенчмарк
+(add\Multi-LLM-Benchmark-v0.2.ps1, переключить $DryRun=$false) - они собраны, но никогда не
+тестировались вживую (в прошлой сессии не было ключей). Версионирование на каждое изменение:
+скопировать текущий Multi-LLM-Prompter-v*.ps1 в backups\, отредактировать, git mv в следующую
+версию, поднять $ToolVersion + шапку + changelog, держать $-токены промптов бэктик-экранированными,
+затем запустить Validate-MultiLLM.ps1 (должно быть PASS) перед выпуском."

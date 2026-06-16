@@ -1,5 +1,8 @@
 # HANDOFF - Multi-LLM Prompter
 
+> Russian parallel version: [HANDOFF-Multi-LLM-Prompter.ru.md](HANDOFF-Multi-LLM-Prompter.ru.md).
+> This English file is the source of truth; keep both in sync on changes.
+
 Last updated: 2026-06-16
 Current version: **v0.8.55** (delivered, daily driver).
 File: `Multi-LLM-Prompter-v0_8_55.ps1` (~9,501 lines, ~416 KB).
