@@ -4,8 +4,8 @@
 > This English file is the source of truth; keep both in sync on changes.
 
 Last updated: 2026-06-16
-Current version: **v0.8.59** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_59.ps1` (~9,540 lines, ~416 KB).
+Current version: **v0.8.60** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_60.ps1` (~9,560 lines, ~416 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -22,14 +22,15 @@ estimates, sidebar + inspector rail, menus, personas, clarification gate, cost b
 -> v0.8.52 (generated-code correctness fix: `$null -lt [DateTime]` semantics)
 -> v0.8.53 (Stop kills the whole backend process tree) -> v0.8.54 (RunFinalVerifier, opt-in)
 -> v0.8.55 (GUI toggle for the verifier) -> v0.8.56 (report/banner version strings use $ToolVersion) -> v0.8.57 (first-run wording + cost labels) -> v0.8.58 (How-it-works strip + cost on Run button)
--> v0.8.59 (Run button auto-sizes to its label - MinWidth, fixes the clipped "est. $X.XX").
+-> v0.8.59 (Run button auto-sizes to its label - MinWidth, fixes the clipped "est. $X.XX")
+-> v0.8.60 (input restructure: expert controls collapsed into an "Advanced settings" Expander).
 
 ## THIS SESSION (2026-06-16) - READ FIRST
 
 The docs/helper/harness work shipped via **PR #1** (`chore/docs-helper-harness`), which is now
-**MERGED to `main`** (merge commit `8fcde6d`). Everything since - v0.8.56, v0.8.57, v0.8.58, v0.8.59 -
+**MERGED to `main`** (merge commit `8fcde6d`). Everything since - v0.8.56 through v0.8.60 -
 is committed directly on `main` (one commit per version, per the versioning rule). Current `main`
-HEAD is the v0.8.59 commit.
+HEAD is the v0.8.60 commit.
 
 What shipped this session:
 - Re-synced all docs from the stale v0.8.2 handoff to the live code (this file, DEVELOPER.md, the
@@ -122,7 +123,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_59.ps1` - ~9,540 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_60.ps1` - ~9,560 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -355,8 +356,19 @@ UIReady; timer stopped + child killed on Closing.
 - v0.8.59: Run button auto-sizes to its label. The dynamic "Run (N tasks) - est. $X.XX" label was
   being clipped by the button's fixed `Width="124"` (it showed "est. $0.0"). Changed to `MinWidth="124"`
   so the button keeps its floor size but grows to fit the cost text. One XAML attribute; no logic,
-  frozen functions, judge contract, routing, or cost math touched. STILL TO FOLLOW (need a live GUI
-  pass): Advanced-settings expander, dismissable quick-start card, tab/queue empty states.
+  frozen functions, judge contract, routing, or cost math touched.
+- v0.8.60: first-run clarity polish (part 3, input restructure). The crowded two-row band of expert
+  controls under the prompt is collapsed into an **"Advanced settings" Expander** (`AdvancedExpander`,
+  collapsed by default). First-run users now see Prompt + Preset + Run only; the Expander holds Task
+  splitter, Work mode, UI auto mode, Open-in-Notepad / Open-folder, Ask-clarifying + Mode, Model A/B,
+  Quality/Fast judge, and Run-final-verifier. Every control kept its Name/tooltip/behavior - they were
+  only wrapped in an Expander + StackPanel (WPF Expander does NOT virtualize its content, so FindName +
+  startup combo population still resolve while collapsed - verified by the XAML-load smoke test:
+  17/17 named controls findable, IsExpanded=False). Selected models stay visible in the header model
+  panel, so collapsing hides no state; Preset stays on the always-visible essentials line (widened to
+  220). Pure XAML layout move; no logic, frozen functions, judge contract, routing, or cost math
+  changed. STILL TO FOLLOW (need a live GUI pass): dismissable quick-start card, tab/queue empty
+  states, and folding the separate "Full Answer" window button into a single "View Answer" action.
 
 ---
 

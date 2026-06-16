@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.59 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.60 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.59:
+# Changes through v0.8.60:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -392,6 +392,17 @@
 #       the button keeps its minimum size but grows to fit the cost text. XAML attribute only; no
 #       logic, frozen functions, judge marker contract, routing, or cost math changed.
 #
+#   96. v0.8.60: First-run clarity polish, part 3 (input restructure). The crowded two-row band of
+#       expert controls under the prompt is now collapsed into an "Advanced settings" Expander
+#       (AdvancedExpander), collapsed by default. First-run users see Prompt + Preset + Run only;
+#       the expander holds Task splitter, Work mode, UI auto mode, Open-in-Notepad / Open-folder,
+#       Ask-clarifying + Mode, Model A/B, Quality/Fast judge, and Run-final-verifier. Every control
+#       keeps its Name/tooltip/behavior - they were only wrapped in an Expander + StackPanel (WPF
+#       Expander does not virtualize, so FindName + startup population still resolve when collapsed).
+#       Selected models remain visible in the header model panel, so collapsing hides no state.
+#       Preset stays on the always-visible essentials line (widened to 220). Pure XAML layout move;
+#       no logic, frozen functions, judge contract, routing, or cost math changed.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -406,7 +417,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.59"
+$ToolVersion = "v0.8.60"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -7937,41 +7948,51 @@ $GuiXamlTemplate = @"
                    VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12"/>
         </Grid>
 
+        <!-- Essentials: Preset stays visible for first-run discovery (v0.8.60) -->
         <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,0">
           <TextBlock Text="Preset:" FontWeight="SemiBold" Foreground="#0F4D8C" VerticalAlignment="Center" Margin="0,0,4,0"/>
-          <ComboBox Name="PresetCombo" Width="140" Height="26" IsEditable="False" ToolTip="Load a built-in prompt preset into the prompt box." Margin="0,0,12,0" BorderBrush="#0F4D8C" BorderThickness="1" Background="#EAF1FB"/>
-          <TextBlock Text="Task splitter:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-          <ComboBox Name="SplitCombo" Width="100" Height="26" IsEditable="False" Margin="0,0,12,0" ToolTip="How the prompt is split into tasks: Heuristic (auto) or None (single task)."/>
-          <TextBlock Text="Work mode:" FontWeight="SemiBold" Foreground="#0F4D8C" VerticalAlignment="Center" Margin="0,0,4,0"/>
-          <ComboBox Name="WorkCombo" Width="90" Height="26" IsEditable="False" BorderBrush="#0F4D8C" BorderThickness="1" Background="#EAF1FB" Margin="0,0,12,0"
-                    ToolTip="Auto: router decides per task. Review: design notes and snippets only. Script: full runnable scripts."/>
-          <TextBlock Text="UI auto mode:" FontWeight="SemiBold" Foreground="#0F4D8C" VerticalAlignment="Center" Margin="0,0,4,0"/>
-          <ComboBox Name="UiModeCombo" Width="90" Height="26" IsEditable="False" BorderBrush="#0F4D8C" BorderThickness="1" Background="#EAF1FB" Margin="0,0,14,0"
-                    ToolTip="Used only when Work mode = Auto: how ui_code concept tasks are handled."/>
-          <CheckBox Name="ChkOpenNotepad" Content="Open final in Notepad" VerticalAlignment="Center" Margin="0,0,14,0"/>
-          <CheckBox Name="ChkOpenFolder" Content="Open run folder when done" VerticalAlignment="Center" Margin="0,0,14,0"/>
-          <CheckBox Name="ChkAskClarifying" Content="Ask questions if prompt is vague" VerticalAlignment="Center"
-                    Margin="0,0,6,0"
-                    ToolTip="Before running, stop and ask clarifying questions when the initial prompt looks underspecified."/>
-          <TextBlock Text="Mode:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-          <ComboBox Name="ClarifyModeCombo" Width="70" Height="26" IsEditable="False"
-                    ToolTip="Local is free and heuristic. AI uses the configured review judge model to decide if clarification is needed."/>
+          <ComboBox Name="PresetCombo" Width="220" Height="26" IsEditable="False" ToolTip="Load a built-in prompt preset into the prompt box - a quick way to see an example." Margin="0,0,12,0" BorderBrush="#0F4D8C" BorderThickness="1" Background="#EAF1FB"/>
         </WrapPanel>
 
-        <WrapPanel Grid.Row="2" Orientation="Horizontal" Margin="0,6,0,0">
-          <TextBlock Text="Model A (OpenAI):" VerticalAlignment="Center" Margin="0,0,4,0"/>
-          <ComboBox Name="ModelACombo" Width="120" Height="26" IsEditable="True" Margin="0,0,12,0"/>
-          <TextBlock Text="Model B (Claude):" VerticalAlignment="Center" Margin="0,0,4,0"/>
-          <ComboBox Name="ModelBCombo" Width="140" Height="26" IsEditable="True" Margin="0,0,12,0"/>
-          <TextBlock Text="Quality judge:" VerticalAlignment="Center" Margin="0,0,4,0" ToolTip="The strong judge used for Full comparisons (comparing two answers and synthesizing). Full mode always uses this, regardless of the Use fast judge toggle."/>
-          <ComboBox Name="JudgeCombo" Width="140" Height="26" IsEditable="True" Margin="0,0,12,0"/>
-          <CheckBox Name="ChkCheapJudge" Content="Use fast judge" VerticalAlignment="Center" Margin="0,0,4,0"
-                    ToolTip="Full comparisons always use the Quality judge. When on, lighter Review/Light checks use the cheaper Fast judge on the right."/>
-          <TextBlock Text="Fast judge:" VerticalAlignment="Center" Margin="6,0,4,0" ToolTip="The cheaper judge used only for Review/Light checks (single-answer validation) when Use fast judge is on."/>
-          <ComboBox Name="CheapJudgeCombo" Width="140" Height="26" IsEditable="True"/>
-          <CheckBox Name="ChkRunVerifier" Content="Run final verifier" VerticalAlignment="Center" Margin="12,0,4,0"
-                    ToolTip="Optional. After the judge writes each task final answer, an independent verifier (not the judge) re-checks it for correctness, completeness, and unsupported claims. Off by default; uses the strong judge model and adds one API call per task."/>
-        </WrapPanel>
+        <!-- Advanced settings: expert knobs, collapsed by default (v0.8.60). Selected models stay visible in the header panel. -->
+        <Expander Grid.Row="2" Name="AdvancedExpander" Header="Advanced settings" IsExpanded="False" Margin="0,8,0,0"
+                  ToolTip="Models, judge, task splitter, work mode, and output options. The defaults are fine for most prompts.">
+          <StackPanel Orientation="Vertical" Margin="0,4,0,0">
+            <WrapPanel Orientation="Horizontal" Margin="0,2,0,0">
+              <TextBlock Text="Task splitter:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+              <ComboBox Name="SplitCombo" Width="100" Height="26" IsEditable="False" Margin="0,0,12,0" ToolTip="How the prompt is split into tasks: Heuristic (auto) or None (single task)."/>
+              <TextBlock Text="Work mode:" FontWeight="SemiBold" Foreground="#0F4D8C" VerticalAlignment="Center" Margin="0,0,4,0"/>
+              <ComboBox Name="WorkCombo" Width="90" Height="26" IsEditable="False" BorderBrush="#0F4D8C" BorderThickness="1" Background="#EAF1FB" Margin="0,0,12,0"
+                        ToolTip="Auto: router decides per task. Review: design notes and snippets only. Script: full runnable scripts."/>
+              <TextBlock Text="UI auto mode:" FontWeight="SemiBold" Foreground="#0F4D8C" VerticalAlignment="Center" Margin="0,0,4,0"/>
+              <ComboBox Name="UiModeCombo" Width="90" Height="26" IsEditable="False" BorderBrush="#0F4D8C" BorderThickness="1" Background="#EAF1FB" Margin="0,0,14,0"
+                        ToolTip="Used only when Work mode = Auto: how ui_code concept tasks are handled."/>
+              <CheckBox Name="ChkOpenNotepad" Content="Open final in Notepad" VerticalAlignment="Center" Margin="0,0,14,0"/>
+              <CheckBox Name="ChkOpenFolder" Content="Open run folder when done" VerticalAlignment="Center" Margin="0,0,14,0"/>
+              <CheckBox Name="ChkAskClarifying" Content="Ask questions if prompt is vague" VerticalAlignment="Center"
+                        Margin="0,0,6,0"
+                        ToolTip="Before running, stop and ask clarifying questions when the initial prompt looks underspecified."/>
+              <TextBlock Text="Mode:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+              <ComboBox Name="ClarifyModeCombo" Width="70" Height="26" IsEditable="False"
+                        ToolTip="Local is free and heuristic. AI uses the configured review judge model to decide if clarification is needed."/>
+            </WrapPanel>
+
+            <WrapPanel Orientation="Horizontal" Margin="0,8,0,0">
+              <TextBlock Text="Model A (OpenAI):" VerticalAlignment="Center" Margin="0,0,4,0"/>
+              <ComboBox Name="ModelACombo" Width="120" Height="26" IsEditable="True" Margin="0,0,12,0"/>
+              <TextBlock Text="Model B (Claude):" VerticalAlignment="Center" Margin="0,0,4,0"/>
+              <ComboBox Name="ModelBCombo" Width="140" Height="26" IsEditable="True" Margin="0,0,12,0"/>
+              <TextBlock Text="Quality judge:" VerticalAlignment="Center" Margin="0,0,4,0" ToolTip="The strong judge used for Full comparisons (comparing two answers and synthesizing). Full mode always uses this, regardless of the Use fast judge toggle."/>
+              <ComboBox Name="JudgeCombo" Width="140" Height="26" IsEditable="True" Margin="0,0,12,0"/>
+              <CheckBox Name="ChkCheapJudge" Content="Use fast judge" VerticalAlignment="Center" Margin="0,0,4,0"
+                        ToolTip="Full comparisons always use the Quality judge. When on, lighter Review/Light checks use the cheaper Fast judge on the right."/>
+              <TextBlock Text="Fast judge:" VerticalAlignment="Center" Margin="6,0,4,0" ToolTip="The cheaper judge used only for Review/Light checks (single-answer validation) when Use fast judge is on."/>
+              <ComboBox Name="CheapJudgeCombo" Width="140" Height="26" IsEditable="True"/>
+              <CheckBox Name="ChkRunVerifier" Content="Run final verifier" VerticalAlignment="Center" Margin="12,0,4,0"
+                        ToolTip="Optional. After the judge writes each task final answer, an independent verifier (not the judge) re-checks it for correctness, completeness, and unsupported claims. Off by default; uses the strong judge model and adds one API call per task."/>
+            </WrapPanel>
+          </StackPanel>
+        </Expander>
       </Grid>
     </Border>
 
