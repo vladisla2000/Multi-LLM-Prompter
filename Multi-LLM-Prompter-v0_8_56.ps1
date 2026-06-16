@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.55 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.56 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.55:
+# Changes through v0.8.56:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -367,6 +367,11 @@
 #       for the v0.8.54 verifier so it can be enabled per-run from the GUI (and by the benchmark
 #       runner). GUI + one env read only; frozen functions, judge contract, routing, and cost math
 #       unchanged. The verifier's own LLM call still needs a keyed run to confirm end-to-end.
+#   92. v0.8.56: Report/banner version strings now use $ToolVersion instead of a hardcoded
+#       "v0.8.52". A live v0.8.55 run exposed final_answer.md (and per-task report headers + the CLI
+#       banner) still printing a hardcoded old version string regardless of the running version. The 7
+#       output headers now interpolate $ToolVersion, so reports always match the actual version.
+#       Output text only; frozen functions, judge marker contract, routing, and cost math unchanged.
 #
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
@@ -382,7 +387,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.55"
+$ToolVersion = "v0.8.56"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -3673,7 +3678,7 @@ Provide the missing email/document/text content and run the task again.
 "@
 
         $TaskFinalMarkdown = @"
-# Multi-LLM Prompter v0.8.52 - Task $($Task.TaskId) Missing Input
+# Multi-LLM Prompter $ToolVersion - Task $($Task.TaskId) Missing Input
 
 ## Task
 
@@ -3891,7 +3896,7 @@ Paste the source content directly under this task, then ask for the summary/revi
 
     if ($AnswerResults.Count -eq 0) {
         $Summary = @"
-# Multi-LLM Prompter v0.8.52 - Task Error Summary
+# Multi-LLM Prompter $ToolVersion - Task Error Summary
 
 Task $($Task.TaskId): $($Task.TaskTitle)
 
@@ -3944,7 +3949,7 @@ $TaskFolder
         $ImprovedPrompt = "No improved prompt. Judge skipped by routing policy."
 
         $TaskFinalMarkdown = @"
-# Multi-LLM Prompter v0.8.52 - Task $($Task.TaskId) Full Answer
+# Multi-LLM Prompter $ToolVersion - Task $($Task.TaskId) Full Answer
 
 ## Task
 
@@ -4068,7 +4073,7 @@ $ImprovedPrompt
         Write-Color ("Judge failed: " + $JudgeResult.Error) "Red"
 
         $FallbackText = @"
-# Multi-LLM Prompter v0.8.52 - Task Fallback Full Answer
+# Multi-LLM Prompter $ToolVersion - Task Fallback Full Answer
 
 Task $($Task.TaskId): $($Task.TaskTitle)
 
@@ -4199,7 +4204,7 @@ $FinalAnswer
 
     $StageStarted = Get-Date
     $TaskFinalMarkdown = @"
-# Multi-LLM Prompter v0.8.52 - Task $($Task.TaskId) Full Answer
+# Multi-LLM Prompter $ToolVersion - Task $($Task.TaskId) Full Answer
 
 ## Task
 
@@ -4406,7 +4411,7 @@ $PipelineStarted = Get-Date
 $PipelineStageMetrics = @()
 $AllRequestMetrics = @()
 
-Write-Header "Multi-LLM Prompter v0.8.52"
+Write-Header "Multi-LLM Prompter $ToolVersion"
 
 Write-Color "Run folder: $RunFolder" "Gray"
 Write-Color "OpenAI answer model: $OpenAIModel_Answer" "Gray"
@@ -4946,7 +4951,7 @@ Save-Json -Path (Join-Path $RunFolder "cost_warnings.json") -Object $CostKeyWarn
 Save-Json -Path (Join-Path $RunFolder "completeness_warnings.json") -Object $CompletenessWarningsLite
 
 $FinalMarkdown = @"
-# Multi-LLM Prompter v0.8.52 - Full Answer
+# Multi-LLM Prompter $ToolVersion - Full Answer
 
 ## Original Prompt
 

@@ -4,8 +4,8 @@
 > This English file is the source of truth; keep both in sync on changes.
 
 Last updated: 2026-06-16
-Current version: **v0.8.55** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_55.ps1` (~9,501 lines, ~416 KB).
+Current version: **v0.8.56** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_56.ps1` (~9,506 lines, ~416 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -21,7 +21,7 @@ estimates, sidebar + inspector rail, menus, personas, clarification gate, cost b
 -> v0.8.41 - v0.8.51 (persona backend, polish, run-done signal, version badge, log toggle)
 -> v0.8.52 (generated-code correctness fix: `$null -lt [DateTime]` semantics)
 -> v0.8.53 (Stop kills the whole backend process tree) -> v0.8.54 (RunFinalVerifier, opt-in)
--> v0.8.55 (GUI toggle for the verifier).
+-> v0.8.55 (GUI toggle for the verifier) -> v0.8.56 (report/banner version strings use $ToolVersion).
 
 ## THIS SESSION (2026-06-16) - READ FIRST
 
@@ -44,16 +44,22 @@ What shipped this session:
 - Adopted backup-then-rename versioning (section 7) and recorded the read-only MCP permission allowlist
   in `.claude\settings.json`.
 
-BLOCKED / PENDING (most important for next session):
-- **NO API KEYS on this machine** (no `MultiLLM.secrets.xml`, no `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`).
-  So v0.8.54 (verifier LLM call), v0.8.55 (GUI verifier runtime), and a LIVE benchmark are built and
-  statically/unit-validated but **never live-tested**. FIRST next step: set keys (GUI -> Set API Keys,
-  which writes the DPAPI secrets file, or the two env vars), then live-validate the verifier end-to-end
-  and run the benchmark.
-- v0.8.52 prompt-fix verify (regenerated AD inventory script includes DistinguishedName + New-Item
-  -Force) is still a watch-item - confirm on the next handy AD run.
+LIVE VALIDATION (2026-06-16): the user's machine now HAS API keys and a live v0.8.55 run succeeded.
+CONFIRMED live: the v0.8.55 GUI (the "Run final verifier" checkbox renders), Full->strong judge
+(claude-opus-4-8 in Full), the cost math, Phase 2 selective run (1 of 6 selected), and the v0.8.52
+AD-prompt fix - the generated script's self-check prints "[Self-check PASS] $null -lt date is TRUE
+in WPS 5.1 (expected)" and the script includes DistinguishedName + New-Item -Force and omits a
+constant Enabled column. (This closes the old v0.8.52 watch-item.) That live run also exposed the
+v0.8.56 fix (report header said v0.8.52).
+
+STILL PENDING for next session:
+- Live-test the VERIFIER: run with "Run final verifier" CHECKED (or MULTILLM_RUNVERIFIER=1) and
+  confirm Task_NN/final_verification.json + the verdict; this is the one verifier path not yet exercised.
+- Run a LIVE benchmark: add\Multi-LLM-Benchmark-v0.2.ps1 with $DryRun=$false (spends real money).
 - Open the PR for `chore/docs-helper-harness` (or merge it to main).
 - v1.0 (config/adapters/CLI consolidation) is the next big milestone - needs scoping, not blind building.
+- NOTE: the AGENT/build env (where the assistant runs) still has no keys - it validates
+  statically/unit only; live runs happen on the user's machine.
 
 ---
 
@@ -115,7 +121,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_55.ps1` - ~9,501 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_56.ps1` - ~9,506 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -328,6 +334,9 @@ UIReady; timer stopped + child killed on Closing.
   new MULTILLM_RUNVERIFIER env var to the child, which sets $RunFinalVerifier for that run (CLI
   unchanged when the var is absent). Off by default. XAML-load smoke-tested + harness PASS 48/0;
   runtime still needs a keyed GUI run to confirm.
+- v0.8.56: report/banner version strings now use $ToolVersion instead of a hardcoded "v0.8.52" (a
+  live v0.8.55 run showed final_answer.md headers mislabelled as v0.8.52). Output text only; frozen
+  functions, judge contract, routing, and cost math unchanged.
 
 ---
 
