@@ -16,14 +16,41 @@ GUI API-key entry, judge-verdict block, operator labels) -> v0.8.9 - v0.8.40 (Ph
 editable task list, tasks_input.json, per-task Type/WorkMode overrides, task-review grid,
 estimates, sidebar + inspector rail, menus, personas, clarification gate, cost budget)
 -> v0.8.41 - v0.8.51 (persona backend, polish, run-done signal, version badge, log toggle)
--> v0.8.52 (generated-code correctness fix: `$null -lt [DateTime]` semantics).
+-> v0.8.52 (generated-code correctness fix: `$null -lt [DateTime]` semantics)
+-> v0.8.53 (Stop kills the whole backend process tree) -> v0.8.54 (RunFinalVerifier, opt-in)
+-> v0.8.55 (GUI toggle for the verifier).
 
-> NOTE on this update: the previous handoff was frozen at v0.8.2 and described Phase 2 as
-> "build pending, no code written." That was ~50 versions stale. This document re-syncs the
-> version, the env contract (3 new vars), the run-folder layout (now per-task subfolders),
-> the GUI surface, and the roadmap to the live v0.8.52 file. The load-bearing CONTRACTS
-> (env vars, judge markers, frozen functions, judge policy) are unchanged and carried
-> forward verbatim where still accurate.
+## THIS SESSION (2026-06-16) - READ FIRST
+
+All work below is on git branch **`chore/docs-helper-harness`** - **10 commits ahead of `main`,
+pushed to origin, NOT merged.** No PR is open (`gh` is not installed on this machine - open it from
+the GitHub UI: https://github.com/vladisla2000/Multi-LLM-Prompter/pull/new/chore/docs-helper-harness).
+
+What shipped this session:
+- Re-synced all docs from the stale v0.8.2 handoff to the live code (this file, DEVELOPER.md, the
+  multi-llm-prompter skill references + repackaged .skill/.zip).
+- Fixed + rewrote the run-review helper for the current run-folder layout -> `Multi-LLM-RunReviewHelper-v0.3.ps1`.
+- Added **`Validate-MultiLLM.ps1`** (repo root) - the pre-delivery gate (static checks for app + helper
+  + benchmark; invariants; AST-extracted behavioral tests of the frozen cost/routing functions). Run
+  it before every delivery; it must be PASS.
+- v0.8.53: Stop now kills the whole backend process tree (no orphaned API calls after Stop).
+- v0.8.54: RunFinalVerifier - a verifier DISTINCT from the judge (opt-in, OFF by default).
+- v0.8.55: GUI "Run final verifier" checkbox + `MULTILLM_RUNVERIFIER` env var.
+- Added the Gate-1 benchmark runner `add\Multi-LLM-Benchmark-v0.2.ps1`; both it and the helper surface
+  the verifier's `final_verification.json`.
+- Adopted backup-then-rename versioning (section 7) and recorded the read-only MCP permission allowlist
+  in `.claude\settings.json`.
+
+BLOCKED / PENDING (most important for next session):
+- **NO API KEYS on this machine** (no `MultiLLM.secrets.xml`, no `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`).
+  So v0.8.54 (verifier LLM call), v0.8.55 (GUI verifier runtime), and a LIVE benchmark are built and
+  statically/unit-validated but **never live-tested**. FIRST next step: set keys (GUI -> Set API Keys,
+  which writes the DPAPI secrets file, or the two env vars), then live-validate the verifier end-to-end
+  and run the benchmark.
+- v0.8.52 prompt-fix verify (regenerated AD inventory script includes DistinguishedName + New-Item
+  -Force) is still a watch-item - confirm on the next handy AD run.
+- Open the PR for `chore/docs-helper-harness` (or merge it to main).
+- v1.0 (config/adapters/CLI consolidation) is the next big milestone - needs scoping, not blind building.
 
 ---
 
@@ -375,12 +402,14 @@ UIReady; timer stopped + child killed on Closing.
 
 ## 9. FIRST PROMPT FOR NEXT SESSION (suggested)
 
-"Multi-LLM Prompter: here is the HANDOFF and v0.8.52 (daily driver, mechanically clean).
-Phase 2 (editable Tasks panel + per-task overrides) is DELIVERED. Load the multi-llm-prompter
-skill with ps-wpf-core (+ vlad-wpf-design for GUI). Respect the frozen functions
-(Get-TaskType / Get-TaskWorkMode / Get-EstimatedCostUsd), the judge marker contract, and the
-Full->strong-judge policy. Candidate next work: (a) v0.9 Benchmark mode from
-add\Multi-LLM-Gate1-Benchmark-Prompts.csv; (b) a Validate-MultiLLM.ps1 harness; (c) the
-Stop/cancel process-tree improvement. Whatever the change, deliver a full versioned file, bump
-the version everywhere + changelog, keep prompt $-tokens backtick-escaped, and run the section 8
-validation before delivery."
+"Multi-LLM Prompter: here is the HANDOFF and v0.8.55 (daily driver, mechanically clean). NOTE: the
+last session's work is on branch chore/docs-helper-harness (10 commits ahead of main, pushed,
+UNMERGED) - check it out / merge / open the PR first. Phase 2 + RunFinalVerifier (opt-in) are
+DELIVERED. Load the multi-llm-prompter skill with ps-wpf-core (+ vlad-wpf-design for GUI). Respect
+the frozen functions (Get-TaskType / Get-TaskWorkMode / Get-EstimatedCostUsd), the judge marker
+contract, and the Full->strong-judge policy. FIRST: if API keys are set, live-validate the verifier
+(enable 'Run final verifier' / MULTILLM_RUNVERIFIER) end-to-end and run the benchmark
+(add\Multi-LLM-Benchmark-v0.2.ps1, flip $DryRun=$false) - these are built but were never live-tested
+(no keys last session). Versioning per change: copy the current Multi-LLM-Prompter-v*.ps1 into
+backups\, edit, git mv to the next version, bump $ToolVersion + header + changelog, keep prompt
+$-tokens backtick-escaped, then run Validate-MultiLLM.ps1 (must be PASS) before delivery."
