@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.57 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.58 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.57:
+# Changes through v0.8.58:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -380,6 +380,12 @@
 #       before/with the pre-run estimate and "Actual cost" after the run. GUI text/labels only; frozen
 #       functions, judge contract, routing, and cost math unchanged. Step rail / quick-start card /
 #       Advanced expander / tab empty-states follow in later versions (need a live GUI pass).
+#   94. v0.8.58: First-run clarity polish, part 2 (orientation). Added a "How it works" strip under
+#       the header (Prompt -> two models answer -> Opus judge writes one final answer) and put the
+#       pre-run cost on the Run button: "Run (N task)" / "Run (N tasks) - est. $X.XX" (singular/plural;
+#       ASCII hyphen, not a middle-dot, to keep the source ASCII-only). GUI text + one layout band
+#       only; frozen functions, judge marker contract, routing, and cost math unchanged. Advanced
+#       expander, quick-start card, and tab empty-states still to follow (need a live GUI pass).
 #
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
@@ -395,7 +401,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.57"
+$ToolVersion = "v0.8.58"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -5392,11 +5398,13 @@ function Update-RunButtonState {
                 $RunText = "Select tasks to run"
                 $EnableRun = $false
             }
-            elseif ($Selected -eq $Total) {
-                $RunText = "Run " + $Selected + " selected"
-            }
             else {
-                $RunText = "Run " + $Selected + " selected"
+                $TaskWord = "tasks"
+                if ($Selected -eq 1) { $TaskWord = "task" }
+                $RunText = "Run (" + $Selected + " " + $TaskWord + ")"
+                if ($null -ne $Script:PreRunPredictedCostUsd) {
+                    $RunText = $RunText + " - est. " + (Format-RailCost -Value ([double]$Script:PreRunPredictedCostUsd))
+                }
             }
         }
         $Script:Ctl_BtnRun.Content = $RunText
@@ -7895,6 +7903,14 @@ $GuiXamlTemplate = @"
           <Button Name="BtnOpenConfig" Content="&#x2699; Config" Width="78" Height="28" Margin="0,0,5,3" ToolTip="Settings: open the config file or set API keys."/>
         </WrapPanel>
       </DockPanel>
+    </Border>
+
+    <!-- How it works strip (v0.8.58) -->
+    <Border DockPanel.Dock="Top" Background="#F2F6FF" BorderThickness="0,0,0,1" BorderBrush="#CCCCCC" Padding="10,5">
+      <TextBlock Foreground="#0F3460" FontSize="12" TextWrapping="Wrap">
+        <Run Text="How it works:" FontWeight="SemiBold"/>
+        <Run Text="  Prompt &#x2192; two models answer &#x2192; an Opus judge writes one final answer."/>
+      </TextBlock>
     </Border>
 
     <!-- ZONE 2: INPUT -->
