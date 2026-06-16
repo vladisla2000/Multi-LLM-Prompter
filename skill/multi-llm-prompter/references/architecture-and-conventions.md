@@ -2,8 +2,8 @@
 
 ## Shape
 
-- Single-file PS 5.1 / ISE tool (~5,700 lines). `$LaunchGui = $true` runs the WPF GUI;
-  `$false` runs the classic CLI pipeline.
+- Single-file PS 5.1 / ISE tool (~9,506 lines as of v0.8.56). `$LaunchGui = $true` runs the
+  WPF GUI; `$false` runs the classic CLI pipeline.
 - The SAME .ps1 runs as a hidden headless child for the actual pipeline work
   (`MULTILLM_HEADLESS=1`). GUI writes `gui_prompt.txt`, pre-creates the run folder,
   starts the child, then polls tasks.json / Task_NN / transcript via a 1 s DispatcherTimer.
@@ -25,8 +25,14 @@
     MULTILLM_CHEAP_JUDGE       "1"/"0" cheap-judge toggle
     MULTILLM_TASKS_FILE        path to tasks_input.json (v0.8.9). When set + file exists,
                                the child loads that explicit task list (array of
-                               {TaskId, PromptText}) INSTEAD of running the splitter;
-                               empty/absent -> Split-UserPromptIntoTasks as before.
+                               {TaskId, TaskTitle, PromptText, TypeOverride, WorkModeOverride})
+                               INSTEAD of running the splitter; empty/absent ->
+                               Split-UserPromptIntoTasks as before.
+    MULTILLM_PERSONA_MODE      Off / Fixed (v0.8.41)
+    MULTILLM_PERSONA_A         persona key for Answer A (architect / ui_ux / devils_advocate
+                               / qa / senior_dev / none) (v0.8.41)
+    MULTILLM_PERSONA_B         persona key for Answer B (v0.8.41)
+    MULTILLM_RUNVERIFIER       "1"/"0" enable the final verifier for this run (v0.8.55; GUI checkbox)
 
 - Precedence: env applied AFTER config load -> GUI choices win over config, which wins
   over top-of-script defaults.

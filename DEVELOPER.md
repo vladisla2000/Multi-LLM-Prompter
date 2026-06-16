@@ -1,6 +1,6 @@
 # Multi-LLM Prompter Developer Handoff
 
-Last updated: 2026-06-13
+Last updated: 2026-06-15
 
 ## Graphics
 
@@ -103,9 +103,11 @@ Design assets:
 
 Add/helper folder:
 
-- `add\APIKeys OpenAI-Claude.txt`
+- `add\APIKeys OpenAI-Claude.txt` (gitignored; not committed)
 - `add\Multi-LLM-Gate1-Benchmark-Prompts.csv`
-- `add\Multi-LLM-RunReviewHelper-v0.1.ps1`
+- `add\Multi-LLM-Benchmark-v0.2.ps1` (Gate-1 benchmark runner over the headless pipeline; Verified column)
+- `add\Multi-LLM-RunReviewHelper-v0.3.ps1` (run analyzer; reports the optional final verifier; v0.1 was broken, superseded)
+- `Validate-MultiLLM.ps1` (repo root; pre-delivery validation harness)
 - `add\My Ideas.txt`
 
 ## Generated Files
