@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.58 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.59 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.58:
+# Changes through v0.8.59:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -387,6 +387,11 @@
 #       only; frozen functions, judge marker contract, routing, and cost math unchanged. Advanced
 #       expander, quick-start card, and tab empty-states still to follow (need a live GUI pass).
 #
+#   95. v0.8.59: Run button auto-sizes to its label. The dynamic label "Run (N tasks) - est. $X.XX"
+#       was clipped by the fixed Width="124" (showed "est. $0.0"). Changed Width to MinWidth=124 so
+#       the button keeps its minimum size but grows to fit the cost text. XAML attribute only; no
+#       logic, frozen functions, judge marker contract, routing, or cost math changed.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -401,7 +406,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.58"
+$ToolVersion = "v0.8.59"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -7890,7 +7895,7 @@ $GuiXamlTemplate = @"
         <WrapPanel Orientation="Horizontal" ItemHeight="30">
           <Button Name="BtnDetect" Content="&#x1F50D; Detect Tasks" Width="118" Height="28" Margin="0,0,5,3"
                   ToolTip="Split the prompt into tasks and preview them in the Tasks tab. This is the exact same split the run will use."/>
-          <Button Name="BtnRun" Content="&#x25B6; Run" Width="124" Height="28" ToolTip="Run the selected tasks. Answer models run in parallel per task, then the Judge compares and synthesizes."
+          <Button Name="BtnRun" Content="&#x25B6; Run" MinWidth="124" Height="28" ToolTip="Run the selected tasks. Answer models run in parallel per task, then the Judge compares and synthesizes."
                   Background="#0B6A0B" Foreground="White" FontWeight="SemiBold" Margin="0,0,5,3"/>
           <Button Name="BtnCopyFinal" Content="&#x1F4C4; Full Answer" Width="110" Height="28"
                   Background="#0078D7" Foreground="White" FontWeight="SemiBold" Margin="0,0,5,3"

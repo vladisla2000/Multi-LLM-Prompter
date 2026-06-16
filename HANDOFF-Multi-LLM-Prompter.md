@@ -4,8 +4,8 @@
 > This English file is the source of truth; keep both in sync on changes.
 
 Last updated: 2026-06-16
-Current version: **v0.8.58** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_58.ps1` (~9,535 lines, ~416 KB).
+Current version: **v0.8.59** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_59.ps1` (~9,540 lines, ~416 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -21,13 +21,15 @@ estimates, sidebar + inspector rail, menus, personas, clarification gate, cost b
 -> v0.8.41 - v0.8.51 (persona backend, polish, run-done signal, version badge, log toggle)
 -> v0.8.52 (generated-code correctness fix: `$null -lt [DateTime]` semantics)
 -> v0.8.53 (Stop kills the whole backend process tree) -> v0.8.54 (RunFinalVerifier, opt-in)
--> v0.8.55 (GUI toggle for the verifier) -> v0.8.56 (report/banner version strings use $ToolVersion) -> v0.8.57 (first-run wording + cost labels) -> v0.8.58 (How-it-works strip + cost on Run button).
+-> v0.8.55 (GUI toggle for the verifier) -> v0.8.56 (report/banner version strings use $ToolVersion) -> v0.8.57 (first-run wording + cost labels) -> v0.8.58 (How-it-works strip + cost on Run button)
+-> v0.8.59 (Run button auto-sizes to its label - MinWidth, fixes the clipped "est. $X.XX").
 
 ## THIS SESSION (2026-06-16) - READ FIRST
 
-All work below is on git branch **`chore/docs-helper-harness`** - **10 commits ahead of `main`,
-pushed to origin, NOT merged.** No PR is open (`gh` is not installed on this machine - open it from
-the GitHub UI: https://github.com/vladisla2000/Multi-LLM-Prompter/pull/new/chore/docs-helper-harness).
+The docs/helper/harness work shipped via **PR #1** (`chore/docs-helper-harness`), which is now
+**MERGED to `main`** (merge commit `8fcde6d`). Everything since - v0.8.56, v0.8.57, v0.8.58, v0.8.59 -
+is committed directly on `main` (one commit per version, per the versioning rule). Current `main`
+HEAD is the v0.8.59 commit.
 
 What shipped this session:
 - Re-synced all docs from the stale v0.8.2 handoff to the live code (this file, DEVELOPER.md, the
@@ -56,7 +58,6 @@ STILL PENDING for next session:
 - Live-test the VERIFIER: run with "Run final verifier" CHECKED (or MULTILLM_RUNVERIFIER=1) and
   confirm Task_NN/final_verification.json + the verdict; this is the one verifier path not yet exercised.
 - Run a LIVE benchmark: add\Multi-LLM-Benchmark-v0.2.ps1 with $DryRun=$false (spends real money).
-- Open the PR for `chore/docs-helper-harness` (or merge it to main).
 - v1.0 (config/adapters/CLI consolidation) is the next big milestone - needs scoping, not blind building.
 - NOTE: the AGENT/build env (where the assistant runs) still has no keys - it validates
   statically/unit only; live runs happen on the user's machine.
@@ -121,7 +122,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_58.ps1` - ~9,535 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_59.ps1` - ~9,540 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -351,6 +352,11 @@ UIReady; timer stopped + child killed on Closing.
   button ("Run (N task)" / "Run (N tasks) - est. $X.XX"). GUI text + one layout band; frozen
   functions, judge contract, routing, cost math unchanged. STILL TO FOLLOW (need a live GUI pass):
   Advanced-settings expander, dismissable quick-start card, tab/queue empty states.
+- v0.8.59: Run button auto-sizes to its label. The dynamic "Run (N tasks) - est. $X.XX" label was
+  being clipped by the button's fixed `Width="124"` (it showed "est. $0.0"). Changed to `MinWidth="124"`
+  so the button keeps its floor size but grows to fit the cost text. One XAML attribute; no logic,
+  frozen functions, judge contract, routing, or cost math touched. STILL TO FOLLOW (need a live GUI
+  pass): Advanced-settings expander, dismissable quick-start card, tab/queue empty states.
 
 ---
 
