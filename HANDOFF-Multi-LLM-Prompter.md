@@ -4,8 +4,8 @@
 > This English file is the source of truth; keep both in sync on changes.
 
 Last updated: 2026-06-16
-Current version: **v0.8.56** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_56.ps1` (~9,506 lines, ~416 KB).
+Current version: **v0.8.57** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_57.ps1` (~9,519 lines, ~416 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -21,7 +21,7 @@ estimates, sidebar + inspector rail, menus, personas, clarification gate, cost b
 -> v0.8.41 - v0.8.51 (persona backend, polish, run-done signal, version badge, log toggle)
 -> v0.8.52 (generated-code correctness fix: `$null -lt [DateTime]` semantics)
 -> v0.8.53 (Stop kills the whole backend process tree) -> v0.8.54 (RunFinalVerifier, opt-in)
--> v0.8.55 (GUI toggle for the verifier) -> v0.8.56 (report/banner version strings use $ToolVersion).
+-> v0.8.55 (GUI toggle for the verifier) -> v0.8.56 (report/banner version strings use $ToolVersion) -> v0.8.57 (first-run wording + cost labels).
 
 ## THIS SESSION (2026-06-16) - READ FIRST
 
@@ -121,7 +121,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_56.ps1` - ~9,506 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_57.ps1` - ~9,519 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -337,6 +337,15 @@ UIReady; timer stopped + child killed on Closing.
 - v0.8.56: report/banner version strings now use $ToolVersion instead of a hardcoded "v0.8.52" (a
   live v0.8.55 run showed final_answer.md headers mislabelled as v0.8.52). Output text only; frozen
   functions, judge contract, routing, and cost math unchanged.
+- v0.8.57: first-run clarity polish (part 1) from the design-system onboarding handoff. Run button
+  reads "Run N selected"; unchecked pre-run tasks show "Not selected" (was "Skipped" - row .Status
+  value only; JudgeMode="Skipped" + row-color triggers untouched); right-rail Cost card labels
+  "Estimated cost" before the run and "Actual cost" after. GUI text/labels only; frozen functions,
+  judge contract, routing, cost math unchanged. PARTS TO FOLLOW (need a live GUI pass): a 3-step rail
+  (Prompt -> Detect -> Run), a dismissable quick-start card (persisted), an Advanced-settings expander
+  for the model/judge/splitter/work-mode controls, and tab/queue empty states. Spec + React mock are
+  in the user's "Multi-LLM Prompter Design System.zip" (design_handoff_first_run); behavioral changes
+  apply within the flat WPF chrome (no reskin).
 
 ---
 

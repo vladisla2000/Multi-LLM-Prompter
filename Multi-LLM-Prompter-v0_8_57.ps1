@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.56 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.57 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.56:
+# Changes through v0.8.57:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -372,6 +372,14 @@
 #       banner) still printing a hardcoded old version string regardless of the running version. The 7
 #       output headers now interpolate $ToolVersion, so reports always match the actual version.
 #       Output text only; frozen functions, judge marker contract, routing, and cost math unchanged.
+#   93. v0.8.57: First-run clarity polish, part 1 (wording + cost labels). The Run button now reads
+#       "Run N selected" (was "Run N Tasks" / "Run N Selected"); unchecked pre-run tasks show the
+#       status "Not selected" instead of "Skipped" (clearer, non-failure word - the task-review row
+#       state value was renamed via .Status only; the unrelated JudgeMode="Skipped" and the row-color
+#       DataTriggers are untouched); and the right-rail Cost card shows an "Estimated cost" label
+#       before/with the pre-run estimate and "Actual cost" after the run. GUI text/labels only; frozen
+#       functions, judge contract, routing, and cost math unchanged. Step rail / quick-start card /
+#       Advanced expander / tab empty-states follow in later versions (need a live GUI pass).
 #
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
@@ -387,7 +395,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.56"
+$ToolVersion = "v0.8.57"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -5385,10 +5393,10 @@ function Update-RunButtonState {
                 $EnableRun = $false
             }
             elseif ($Selected -eq $Total) {
-                $RunText = "Run " + $Selected + " Tasks"
+                $RunText = "Run " + $Selected + " selected"
             }
             else {
-                $RunText = "Run " + $Selected + " Selected"
+                $RunText = "Run " + $Selected + " selected"
             }
         }
         $Script:Ctl_BtnRun.Content = $RunText
@@ -5633,6 +5641,7 @@ function Update-RightRailFromPreview {
         if ($null -ne $Script:Ctl_TxtRailTotalTokens) { $Script:Ctl_TxtRailTotalTokens.Text = "-" }
         $Script:PreRunPredictedCostUsd = $null
         if ($null -ne $Script:Ctl_TxtRailCostCompare) { $Script:Ctl_TxtRailCostCompare.Visibility = [System.Windows.Visibility]::Collapsed }
+        if ($null -ne $Script:Ctl_TxtRailCostLabel) { $Script:Ctl_TxtRailCostLabel.Text = "Estimated cost" }
         Set-RightRailCost -CostValue 0
         return
     }
@@ -5645,6 +5654,7 @@ function Update-RightRailFromPreview {
     if ($null -ne $Script:Ctl_TxtRailTotalTokens) { $Script:Ctl_TxtRailTotalTokens.Text = Format-RailNumber -Value ([double]$Estimate.TokensValue) }
     $Script:PreRunPredictedCostUsd = [double]$Estimate.CostValue
     if ($null -ne $Script:Ctl_TxtRailCostCompare) { $Script:Ctl_TxtRailCostCompare.Visibility = [System.Windows.Visibility]::Collapsed }
+    if ($null -ne $Script:Ctl_TxtRailCostLabel) { $Script:Ctl_TxtRailCostLabel.Text = "Estimated cost" }
     Set-RightRailCost -CostValue ([double]$Estimate.CostValue)
 }
 
@@ -5698,6 +5708,7 @@ function Update-RightRailFromRun {
     }
     $ActualCost = [double]$Timing.EstimatedCostUsd
     Set-RightRailCost -CostValue $ActualCost
+    if ($null -ne $Script:Ctl_TxtRailCostLabel) { $Script:Ctl_TxtRailCostLabel.Text = "Actual cost" }
 
     if ($null -ne $Script:Ctl_TxtRailCostCompare) {
         $HavePrediction = $false
@@ -6105,7 +6116,7 @@ function Update-AllTaskReviewRowEstimates {
     if ($null -eq $Script:TaskReviewRows) { return }
     $Recalculated = $false
     foreach ($Row in @($Script:TaskReviewRows)) {
-        if ([string]$Row.Status -eq "Ready" -or [string]$Row.Status -eq "Skipped") {
+        if ([string]$Row.Status -eq "Ready" -or [string]$Row.Status -eq "Not selected") {
             Update-TaskReviewRowEstimate -Row $Row
             $Recalculated = $true
         }
@@ -6308,7 +6319,7 @@ function Update-TaskDetailsPanel {
     }
     if ($null -ne $Script:Ctl_TxtDetailJudge) { $Script:Ctl_TxtDetailJudge.Text = $JudgeDisplay }
     if ($null -ne $Script:Ctl_TxtDetailValueKind) {
-        if ([string]$Row.Status -eq "Ready" -or [string]$Row.Status -eq "Skipped") { $Script:Ctl_TxtDetailValueKind.Text = "Cost / tokens / time are estimates (before the run)." }
+        if ([string]$Row.Status -eq "Ready" -or [string]$Row.Status -eq "Not selected") { $Script:Ctl_TxtDetailValueKind.Text = "Cost / tokens / time are estimates (before the run)." }
         else { $Script:Ctl_TxtDetailValueKind.Text = "Cost / tokens / time are actual values from the run." }
     }
     if ($null -ne $Script:Ctl_TaskDetailPromptBox) {
@@ -6325,7 +6336,7 @@ function Update-TaskDetailsPanel {
             if ($null -ne $Script:Ctl_TxtTaskDetailPromptLabel) { $Script:Ctl_TxtTaskDetailPromptLabel.Visibility = [System.Windows.Visibility]::Visible }
         }
     }
-    $IsPreRunRow = ([string]$Row.Status -eq "Ready" -or [string]$Row.Status -eq "Skipped")
+    $IsPreRunRow = ([string]$Row.Status -eq "Ready" -or [string]$Row.Status -eq "Not selected")
     $Script:SuppressOverrideCombo = $true
     try {
         if ($null -ne $Script:Ctl_CmbTaskTypeOverride) {
@@ -6370,10 +6381,10 @@ function Set-AllTaskReviewRowsSelected {
         foreach ($Row in @($Script:TaskReviewRows)) {
             $Row.IsSelected = $Selected
             if ($Selected -eq $true) {
-                if ([string]$Row.Status -eq "Skipped") { $Row.Status = "Ready" }
+                if ([string]$Row.Status -eq "Not selected") { $Row.Status = "Ready" }
             }
             else {
-                $Row.Status = "Skipped"
+                $Row.Status = "Not selected"
             }
         }
         Sync-TaskReviewEditBox
@@ -6412,10 +6423,10 @@ function Update-TaskReviewSelectionSummary {
                 if ($null -ne $Row.EstCostValue) { $CostTotal += [double]$Row.EstCostValue; $HasCost = $true }
                 if ($null -ne $Row.EstTimeSec) { $TimeTotal += [int]$Row.EstTimeSec }
                 if ($null -ne $Row.EstTokens -and -not [string]::IsNullOrWhiteSpace([string]$Row.EstTokens)) { $TokensTotal += [int]$Row.EstTokens }
-                if ([string]$Row.Status -eq "Skipped") { $Row.Status = "Ready" }
+                if ([string]$Row.Status -eq "Not selected") { $Row.Status = "Ready" }
             }
             else {
-                $Row.Status = "Skipped"
+                $Row.Status = "Not selected"
             }
         }
     }
@@ -7724,6 +7735,7 @@ $GuiXamlTemplate = @"
           <Border Background="White" BorderBrush="#D0D7DE" BorderThickness="1" Padding="8" Margin="0,0,0,6">
             <StackPanel>
               <TextBlock Text="&#x25BE; Cost" FontWeight="SemiBold" Foreground="#0B2545" Margin="0,0,0,8"/>
+              <TextBlock Name="TxtRailCostLabel" Text="Estimated cost" FontSize="11" Foreground="#777777" Margin="0,0,0,2"/>
               <DockPanel Margin="0,0,0,4">
                 <TextBlock Name="TxtRailCostBig" Text="`$0.00" FontSize="24" FontWeight="Bold" Foreground="#111111"/>
                 <TextBlock Text="USD" FontSize="12" Foreground="#555555" VerticalAlignment="Bottom" Margin="6,0,0,4"/>
@@ -8232,6 +8244,7 @@ $Script:Ctl_TxtRailCreated = $GuiWindow.FindName("TxtRailCreated")
 $Script:Ctl_TxtRailLastRun = $GuiWindow.FindName("TxtRailLastRun")
 $Script:Ctl_TxtRailRunStatus = $GuiWindow.FindName("TxtRailRunStatus")
 $Script:Ctl_TxtRailCostBig = $GuiWindow.FindName("TxtRailCostBig")
+$Script:Ctl_TxtRailCostLabel = $GuiWindow.FindName("TxtRailCostLabel")
 $Script:Ctl_TxtRailCostIls = $GuiWindow.FindName("TxtRailCostIls")
 $Script:Ctl_TxtRailCostCompare = $GuiWindow.FindName("TxtRailCostCompare")
 $Script:Ctl_TxtRailBudget = $GuiWindow.FindName("TxtRailBudget")
@@ -8836,7 +8849,7 @@ $Script:Ctl_BtnRun.Add_Click({
     if ($null -ne $Script:TaskReviewRows -and @($Script:TaskReviewRows).Count -gt 0) {
         foreach ($Row in @($Script:TaskReviewRows)) {
             if ($Row.IsSelected -eq $true) { $Row.Status = "Queued" }
-            else { $Row.Status = "Skipped" }
+            else { $Row.Status = "Not selected" }
         }
         Refresh-TaskReviewGrid
     }
@@ -8909,10 +8922,10 @@ $Script:Ctl_TasksGrid.Add_PreviewMouseLeftButtonDown({
     try {
         $Row.IsSelected = (-not ($Row.IsSelected -eq $true))
         if ($Row.IsSelected -eq $true) {
-            if ([string]$Row.Status -eq "Skipped") { $Row.Status = "Ready" }
+            if ([string]$Row.Status -eq "Not selected") { $Row.Status = "Ready" }
         }
         else {
-            $Row.Status = "Skipped"
+            $Row.Status = "Not selected"
         }
         $Script:Ctl_TasksGrid.SelectedItem = $Row
         Sync-TaskReviewEditBox
@@ -8998,10 +9011,10 @@ if ($null -ne $Script:Ctl_ChkTaskDetailInclude) {
         try {
             $Selected.IsSelected = ($Script:Ctl_ChkTaskDetailInclude.IsChecked -eq $true)
             if ($Selected.IsSelected -eq $true) {
-                if ([string]$Selected.Status -eq "Skipped") { $Selected.Status = "Ready" }
+                if ([string]$Selected.Status -eq "Not selected") { $Selected.Status = "Ready" }
             }
             else {
-                $Selected.Status = "Skipped"
+                $Selected.Status = "Not selected"
             }
             Sync-TaskReviewEditBox
             Update-TaskReviewSelectionSummary
@@ -9019,7 +9032,7 @@ $OverrideComboChanged = {
     if ($null -eq $Script:Ctl_TasksGrid) { return }
     $Row = $Script:Ctl_TasksGrid.SelectedItem
     if ($null -eq $Row) { return }
-    if (-not ([string]$Row.Status -eq "Ready" -or [string]$Row.Status -eq "Skipped")) { return }
+    if (-not ([string]$Row.Status -eq "Ready" -or [string]$Row.Status -eq "Not selected")) { return }
     if (-not ($Row.PSObject.Properties.Name -contains "TypeOverride")) { return }
 
     $TypeSel = ""
