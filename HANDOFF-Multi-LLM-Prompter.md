@@ -3,9 +3,9 @@
 > Russian parallel version: [HANDOFF-Multi-LLM-Prompter.ru.md](HANDOFF-Multi-LLM-Prompter.ru.md).
 > This English file is the source of truth; keep both in sync on changes.
 
-Last updated: 2026-06-16
-Current version: **v0.8.61** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_61.ps1` (~9,580 lines, ~416 KB).
+Last updated: 2026-06-17
+Current version: **v0.8.72** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_72.ps1` (~10,390 lines, ~430 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -24,14 +24,23 @@ estimates, sidebar + inspector rail, menus, personas, clarification gate, cost b
 -> v0.8.55 (GUI toggle for the verifier) -> v0.8.56 (report/banner version strings use $ToolVersion) -> v0.8.57 (first-run wording + cost labels) -> v0.8.58 (How-it-works strip + cost on Run button)
 -> v0.8.59 (Run button auto-sizes to its label - MinWidth, fixes the clipped "est. $X.XX")
 -> v0.8.60 (input restructure: expert controls collapsed into an "Advanced settings" Expander)
--> v0.8.61 (left panel reworked from jump-nav into an action rail; clickable recent runs).
+-> v0.8.61 (left panel reworked from jump-nav into an action rail; clickable recent runs)
+-> v0.8.62 - v0.8.71 (Cost & Metrics tab built out: per-question Clarify Q+A; Cost by Role/Model +
+   Task Summary + Timing as real DataGrids; offline cost recommendations; Detect-first rail; HTML cost
+   report; verifier cost folded into totals; predicted-vs-actual cost saved + surfaced)
+-> v0.8.72 (clear Estimated-vs-Actual cost rows; header-checkbox clip fix; author "VladSp + AI").
 
-## THIS SESSION (2026-06-16) - READ FIRST
+## THIS SESSION (2026-06-17) - READ FIRST
+
+**NOTE ON VERSION GAP:** v0.8.62 - v0.8.71 were committed on `main` OUTSIDE this assistant session
+(a parallel track - one commit per version, all on `main`, pushed). Their one-line summaries are in
+the changelog below; the canonical detail is `git log` and the in-file changelog (entries 96-107).
+This session resumed ownership at v0.8.71 and shipped **v0.8.72**.
 
 The docs/helper/harness work shipped via **PR #1** (`chore/docs-helper-harness`), which is now
-**MERGED to `main`** (merge commit `8fcde6d`). Everything since - v0.8.56 through v0.8.61 -
+**MERGED to `main`** (merge commit `8fcde6d`). Everything since - v0.8.56 through v0.8.72 -
 is committed directly on `main` (one commit per version, per the versioning rule). Current `main`
-HEAD is the v0.8.61 commit.
+HEAD is the v0.8.72 commit.
 
 What shipped this session:
 - Re-synced all docs from the stale v0.8.2 handoff to the live code (this file, DEVELOPER.md, the
@@ -124,7 +133,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_61.ps1` - ~9,580 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_72.ps1` - ~10,390 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -388,6 +397,33 @@ UIReady; timer stopped + child killed on Closing.
   count 119 held (-Set-SidebarActiveItem, +Open-PastRun) as expected. STILL TO FOLLOW (need a live GUI
   pass): dismissable quick-start card, tab/queue empty states, and folding "Full Answer" into a single
   "View Answer" action.
+- v0.8.62 - v0.8.71 (committed on `main` OUTSIDE this session; one-liners from the commit messages -
+  see `git log` and in-file changelog 96-107 for detail):
+  - v0.8.62: split the Clarify Prompt panel into per-question Q+A sections.
+  - v0.8.63: surface Cost by Role / Cost by Model + Task Summary in the GUI "Cost & Metrics" tab.
+  - v0.8.64: offline cost recommendations in the Cost & Metrics tab (`Get-CostRecommendations`).
+  - v0.8.65: left-rail polish - Detect-first order, framed chip buttons (`RailButton` style), clear hover.
+  - v0.8.66: Cost by Role / Cost by Model / Task Summary render as real DataGrids (not monospace text).
+  - v0.8.67: HTML cost report (open in browser) instead of an embedded web view.
+  - v0.8.68: the GUI log auto-expands on ERROR.
+  - v0.8.69: count the final verifier's cost in the run totals.
+  - v0.8.70: predicted-vs-actual cost saved to the run folder + surfaced in Cost & Metrics + report;
+    "Copy Full Answer" rename of the rail Copy button.
+  - v0.8.71: Timing Summary renders as a decorated grid too (all four tables are now GUI grids).
+- v0.8.72: first-run TRUST polish from a live review of v0.8.61. (a) The right-rail Cost card now shows
+  an **explicit, always-visible "Estimated (max)" vs "Actual"** pair (new `TxtRailCostEst` /
+  `TxtRailCostAct`) instead of one number that silently flips its label - so a tiny actual next to a
+  worst-case ceiling reads as expected, not broken. Actual is colored green when under / red when over
+  the estimate, matching the existing predicted-vs-actual delta line; the "Estimated (max)" label +
+  tooltip explain it is a token-budget ceiling. (b) Fixed the **clipped select-all checkbox** atop the
+  Tasks grid - the shared column-header style had no `VerticalContentAlignment`, so the header CheckBox
+  rendered top-aligned and the band cropped it; added `VerticalContentAlignment=Center` (header height
+  28->30). (c) Added the app author **"VladSp + AI"** to the left-rail footer and the Help > About dialog.
+  GUI/display only; frozen functions, judge contract, routing, and cost math (`Get-EstimatedCostUsd`, the
+  prediction value) unchanged. Validated: parse 0 errors; XAML-load smoke (new cost fields + header
+  checkbox findable); harness PASS=48/0. STILL OPEN from the review (need fixes): #5 task-type display
+  consistency, #7 duplicate "Full Answer" rail-button-vs-tab label, #9 Improved Prompt dead-end/stale
+  content, #10 "SingleAD" preset jargon; plus the runtime re-check of #3/#4/#6 (time/counter/token).
 
 ---
 

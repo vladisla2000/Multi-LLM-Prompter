@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.71 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.72 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.71:
+# Changes through v0.8.72:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -525,6 +525,18 @@
 #       Summary - are GUI grids, not only text in the Full Answer. Clear-MetricsTab resets the new grid.
 #       GUI/read-only over the same run-folder JSON; no pipeline/child/judge/routing/cost-math change.
 #
+#  108. v0.8.72: First-run trust polish from a live review of v0.8.61. (a) Cost card now shows an
+#       EXPLICIT, always-visible "Estimated (max)" vs "Actual" comparison instead of one number that
+#       silently flips its label - so a tiny actual next to a worst-case ceiling reads as expected, not
+#       broken. New TxtRailCostEst / TxtRailCostAct lines; Actual is colored green when under and red
+#       when over the estimate, matching the existing predicted-vs-actual delta line. The "Estimated
+#       (max)" label + tooltip explain it is a token-budget ceiling. (b) Fixed the clipped select-all
+#       checkbox atop the Tasks grid: the shared column-header style had no VerticalContentAlignment, so
+#       the header CheckBox rendered top-aligned and the band cropped it; added VerticalContentAlignment
+#       =Center (header height 28->30). (c) Added the app author "VladSp + AI" to the left-rail footer and
+#       the Help > About dialog. GUI/display only; frozen functions, judge contract, routing, and cost
+#       math (Get-EstimatedCostUsd, the prediction value) unchanged.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -539,7 +551,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.71"
+$ToolVersion = "v0.8.72"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -5803,6 +5815,11 @@ function Update-RightRailFromPreview {
         $Script:PreRunPredictedCostUsd = $null
         if ($null -ne $Script:Ctl_TxtRailCostCompare) { $Script:Ctl_TxtRailCostCompare.Visibility = [System.Windows.Visibility]::Collapsed }
         if ($null -ne $Script:Ctl_TxtRailCostLabel) { $Script:Ctl_TxtRailCostLabel.Text = "Estimated cost" }
+        if ($null -ne $Script:Ctl_TxtRailCostEst) { $Script:Ctl_TxtRailCostEst.Text = "-" }
+        if ($null -ne $Script:Ctl_TxtRailCostAct) {
+            $Script:Ctl_TxtRailCostAct.Text = "-"
+            $Script:Ctl_TxtRailCostAct.Foreground = New-GuiBrush -ColorText "#111111"
+        }
         Set-RightRailCost -CostValue 0
         return
     }
@@ -5816,6 +5833,11 @@ function Update-RightRailFromPreview {
     $Script:PreRunPredictedCostUsd = [double]$Estimate.CostValue
     if ($null -ne $Script:Ctl_TxtRailCostCompare) { $Script:Ctl_TxtRailCostCompare.Visibility = [System.Windows.Visibility]::Collapsed }
     if ($null -ne $Script:Ctl_TxtRailCostLabel) { $Script:Ctl_TxtRailCostLabel.Text = "Estimated cost" }
+    if ($null -ne $Script:Ctl_TxtRailCostEst) { $Script:Ctl_TxtRailCostEst.Text = Format-RailCost -Value ([double]$Estimate.CostValue) }
+    if ($null -ne $Script:Ctl_TxtRailCostAct) {
+        $Script:Ctl_TxtRailCostAct.Text = "-"
+        $Script:Ctl_TxtRailCostAct.Foreground = New-GuiBrush -ColorText "#111111"
+    }
     Set-RightRailCost -CostValue ([double]$Estimate.CostValue)
 }
 
@@ -5870,6 +5892,7 @@ function Update-RightRailFromRun {
     $ActualCost = [double]$Timing.EstimatedCostUsd
     Set-RightRailCost -CostValue $ActualCost
     if ($null -ne $Script:Ctl_TxtRailCostLabel) { $Script:Ctl_TxtRailCostLabel.Text = "Actual cost" }
+    if ($null -ne $Script:Ctl_TxtRailCostAct) { $Script:Ctl_TxtRailCostAct.Text = Format-RailCost -Value $ActualCost }
 
     if ($null -ne $Script:Ctl_TxtRailCostCompare) {
         $HavePrediction = $false
@@ -5883,12 +5906,15 @@ function Update-RightRailFromRun {
             $DirWord = "on target"
             if ($Pct -le -1) { $DirWord = "lower than predicted" }
             elseif ($Pct -ge 1) { $DirWord = "higher than predicted" }
+            if ($null -ne $Script:Ctl_TxtRailCostEst) { $Script:Ctl_TxtRailCostEst.Text = Format-RailCost -Value $Predicted }
+            $CompareColor = "#555555"
+            if ($Pct -ge 1) { $CompareColor = "#A4262C" }
+            elseif ($Pct -le -1) { $CompareColor = "#0B6A0B" }
+            if ($null -ne $Script:Ctl_TxtRailCostAct) { $Script:Ctl_TxtRailCostAct.Foreground = New-GuiBrush -ColorText $CompareColor }
             $CompareText = ("Predicted {0} -> actual {1}  ({2:+0.0;-0.0;0.0}%, {3})" -f (Format-RailCost -Value $Predicted), (Format-RailCost -Value $ActualCost), $Pct, $DirWord)
             $Script:Ctl_TxtRailCostCompare.Text = $CompareText
             $Script:Ctl_TxtRailCostCompare.Visibility = [System.Windows.Visibility]::Visible
-            if ($Pct -ge 1) { $Script:Ctl_TxtRailCostCompare.Foreground = New-GuiBrush -ColorText "#A4262C" }
-            elseif ($Pct -le -1) { $Script:Ctl_TxtRailCostCompare.Foreground = New-GuiBrush -ColorText "#0B6A0B" }
-            else { $Script:Ctl_TxtRailCostCompare.Foreground = New-GuiBrush -ColorText "#555555" }
+            $Script:Ctl_TxtRailCostCompare.Foreground = New-GuiBrush -ColorText $CompareColor
             Add-GuiLog -Tag "INFO" -Message ("Cost compare: " + $CompareText)
         }
         else {
@@ -8361,7 +8387,8 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.71" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.72" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Text="by VladSp + AI" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -8490,7 +8517,25 @@ $GuiXamlTemplate = @"
                 <TextBlock Name="TxtRailCostBig" Text="`$0.00" FontSize="24" FontWeight="Bold" Foreground="#111111"/>
                 <TextBlock Text="USD" FontSize="12" Foreground="#555555" VerticalAlignment="Bottom" Margin="6,0,0,4"/>
               </DockPanel>
-              <TextBlock Name="TxtRailCostIls" Text="~0.00 ILS" FontSize="13" FontWeight="SemiBold" Foreground="#333333" Margin="0,0,0,6"/>
+              <TextBlock Name="TxtRailCostIls" Text="~0.00 ILS" FontSize="13" FontWeight="SemiBold" Foreground="#333333" Margin="0,0,0,8"/>
+              <!-- Clear estimated-vs-actual comparison (v0.8.72) -->
+              <Grid Margin="0,0,0,2">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Estimated (max)" FontSize="12" Foreground="#555555"
+                           ToolTip="A worst-case ceiling from each task's max token budget. The actual cost is usually far lower."/>
+                <TextBlock Grid.Column="1" Name="TxtRailCostEst" Text="-" FontSize="12" FontWeight="SemiBold" Foreground="#333333" HorizontalAlignment="Right"/>
+              </Grid>
+              <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Actual" FontSize="12" Foreground="#555555"/>
+                <TextBlock Grid.Column="1" Name="TxtRailCostAct" Text="-" FontSize="12" FontWeight="Bold" Foreground="#111111" HorizontalAlignment="Right"/>
+              </Grid>
               <TextBlock Name="TxtRailCostCompare" Text="" FontSize="12" Foreground="#555555" TextWrapping="Wrap" Margin="0,0,0,6" Visibility="Collapsed"/>
               <Grid Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
@@ -8742,8 +8787,9 @@ $GuiXamlTemplate = @"
                   <Setter Property="Background" Value="#1F4788"/>
                   <Setter Property="Foreground" Value="White"/>
                   <Setter Property="FontWeight" Value="SemiBold"/>
-                  <Setter Property="Height" Value="28"/>
+                  <Setter Property="Height" Value="30"/>
                   <Setter Property="Padding" Value="6,0"/>
+                  <Setter Property="VerticalContentAlignment" Value="Center"/>
                 </Style>
               </DataGrid.ColumnHeaderStyle>
               <DataGrid.RowStyle>
@@ -9075,6 +9121,8 @@ $Script:Ctl_TxtRailRunStatus = $GuiWindow.FindName("TxtRailRunStatus")
 $Script:Ctl_TxtRailCostBig = $GuiWindow.FindName("TxtRailCostBig")
 $Script:Ctl_TxtRailCostLabel = $GuiWindow.FindName("TxtRailCostLabel")
 $Script:Ctl_TxtRailCostIls = $GuiWindow.FindName("TxtRailCostIls")
+$Script:Ctl_TxtRailCostEst = $GuiWindow.FindName("TxtRailCostEst")
+$Script:Ctl_TxtRailCostAct = $GuiWindow.FindName("TxtRailCostAct")
 $Script:Ctl_TxtRailCostCompare = $GuiWindow.FindName("TxtRailCostCompare")
 $Script:Ctl_TxtRailBudget = $GuiWindow.FindName("TxtRailBudget")
 $Script:Ctl_PbRailCost = $GuiWindow.FindName("PbRailCost")
@@ -10229,7 +10277,7 @@ if ($null -ne $Script:Ctl_TopMenu) {
         else { Add-GuiLog -Tag "WARN" -Message "DEVELOPER.md not found next to the script." }
     })
     $MiHelpAbout.Add_Click({
-        $AboutText = "Multi-LLM Prompter " + $ToolVersion + "`r`n`r`n" + "Sends one prompt to two answer models in parallel, a Judge compares and synthesizes, and writes a final answer plus a full cost and timing audit trail." + "`r`n`r`n" + "Output folder: " + $OutputRoot + "`r`n" + "Config file: " + $ConfigPath
+        $AboutText = "Multi-LLM Prompter " + $ToolVersion + "`r`n" + "Author: VladSp + AI" + "`r`n`r`n" + "Sends one prompt to two answer models in parallel, a Judge compares and synthesizes, and writes a final answer plus a full cost and timing audit trail." + "`r`n`r`n" + "Output folder: " + $OutputRoot + "`r`n" + "Config file: " + $ConfigPath
         [void][System.Windows.MessageBox]::Show($AboutText, "About Multi-LLM Prompter", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Information)
     })
 }
