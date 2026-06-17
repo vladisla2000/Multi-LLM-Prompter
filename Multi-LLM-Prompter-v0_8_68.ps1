@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.67 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.68 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.67:
+# Changes through v0.8.68:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -487,6 +487,14 @@
 #       shipped DLLs + a JS<->PowerShell bridge - against the single-file PS 5.1 design. Read-only;
 #       no pipeline/child/judge/routing/cost-math change. Adds one Add_Click handler (40 total).
 #
+#  104. v0.8.68: Log auto-expands on ERROR. Add-GuiLog now detects an ERROR tag and, only when the
+#       bottom log panel is currently collapsed, expands it (to the last expanded height, else 160px,
+#       clamped 96..360 via Set-GuiLogPanelHeight) so a failure can never hide behind a collapsed log.
+#       Fires only on ERROR and only when collapsed, so it never fights a user who deliberately
+#       collapsed an already-visible log. GUI behavior only; frozen functions, judge contract, routing,
+#       and cost math unchanged. (Also this session: verified the v0.8.54/55 RunFinalVerifier offline -
+#       wiring + parser unit-tested - see notes; the live LLM call still needs a keyed run to confirm.)
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -501,7 +509,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.67"
+$ToolVersion = "v0.8.68"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -5281,6 +5289,20 @@ function Add-GuiLog {
     $Script:Ctl_LogBox.AppendText($Line + [Environment]::NewLine)
     $Script:Ctl_LogBox.ScrollToEnd()
 
+    # v0.8.68: an ERROR must never hide behind a collapsed log. If the log panel is collapsed when an
+    # error is logged, auto-expand it (to the last expanded height, else a sane default) so the failure
+    # is visible immediately. Only fires on ERROR and only when collapsed, so it cannot fight the user.
+    if ($Tag -eq "ERROR" -and $null -ne $Script:Ctl_LogBox) {
+        $LogCollapsed = ($Script:Ctl_LogBox.Visibility -ne [System.Windows.Visibility]::Visible) -or ($Script:Ctl_LogBox.Height -le 0)
+        if ($LogCollapsed -eq $true) {
+            $ExpandTo = 160.0
+            if ($null -ne $Script:GuiLogExpandedHeight -and $Script:GuiLogExpandedHeight -gt 0) { $ExpandTo = [double]$Script:GuiLogExpandedHeight }
+            if ($ExpandTo -lt 96) { $ExpandTo = 160.0 }
+            if ($ExpandTo -gt 360) { $ExpandTo = 360.0 }
+            Set-GuiLogPanelHeight -Height $ExpandTo
+        }
+    }
+
     if ($EnableGuiSessionLog -eq $true) {
         try {
             [System.IO.File]::AppendAllText($GuiSessionLogPath, $Line + [Environment]::NewLine, [System.Text.Encoding]::UTF8)
@@ -8272,7 +8294,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.67" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.68" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
