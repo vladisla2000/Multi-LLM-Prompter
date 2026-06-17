@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.69 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.70 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.69:
+# Changes through v0.8.70:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -507,6 +507,15 @@
 #       answer+judge production cost, so total = sum(per-task) + Verifier. Get-EstimatedCostUsd and the
 #       cost math are unchanged; this only stops a real call from being dropped from the aggregates.
 #
+#  106. v0.8.70: Predicted-vs-actual cost in the Cost & Metrics tab + HTML report, and a clearer Copy
+#       label. (a) The pre-run cost prediction is now persisted to pre_run_prediction.json in the run
+#       folder at run start; Get-CostRecommendations reads it and adds a "Predicted $X vs actual $Y
+#       (Z% over/under the estimate)" line, so the comparison shows in the Cost & Metrics recommendations
+#       and the HTML report - and works for reloaded past runs, not just the current in-memory run (the
+#       right-rail v0.8.30 compare only covered the live run). (b) The rail "Copy" button is relabeled
+#       "Copy Full Answer" (tooltip updated). GUI/offline only; no pipeline/child/judge/routing/cost-math
+#       change (Get-EstimatedCostUsd untouched; the prediction is the existing GUI estimate, just saved).
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -521,7 +530,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.69"
+$ToolVersion = "v0.8.70"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -6845,6 +6854,18 @@ function Get-CostRecommendations {
         try { $CostWarn = $CostWarnText | ConvertFrom-Json -ErrorAction Stop } catch { $CostWarn = $null }
     }
 
+    # v0.8.70: pre-run cost prediction persisted at run start (pre_run_prediction.json), for the
+    # predicted-vs-actual line below.
+    $Predicted = $null
+    $PredText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "pre_run_prediction.json")
+    if (-not [string]::IsNullOrWhiteSpace($PredText)) {
+        try {
+            $PredObj = $PredText | ConvertFrom-Json -ErrorAction Stop
+            if ($null -ne $PredObj.PredictedCostUsd) { $Predicted = [double]$PredObj.PredictedCostUsd }
+        }
+        catch { $Predicted = $null }
+    }
+
     if ($null -eq $CostRole -and $null -eq $TaskSummary -and $null -eq $Timing) {
         return @()
     }
@@ -6899,6 +6920,16 @@ function Get-CostRecommendations {
     }
     else {
         $Recs += "[i] No previous runs to compare against yet."
+    }
+
+    # 1b. Predicted vs actual for THIS run (uses the pre-run estimate persisted at run start). Tells the
+    # operator how accurate the estimator was and whether this run ran hotter/cheaper than expected.
+    if ($null -ne $Predicted -and $Predicted -gt 0 -and $TotalCost -gt 0) {
+        $PredDelta = (($TotalCost - $Predicted) / $Predicted) * 100.0
+        $Dir = "on the estimate"
+        if ($PredDelta -ge 1) { $Dir = ("{0:0}" -f $PredDelta) + "% OVER the estimate" }
+        elseif ($PredDelta -le -1) { $Dir = ("{0:0}" -f [Math]::Abs($PredDelta)) + "% UNDER the estimate" }
+        $Recs += ("[i] Predicted $" + ("{0:0.######}" -f $Predicted) + " vs actual $" + ("{0:0.######}" -f $TotalCost) + " (" + $Dir + ").")
     }
 
     # 2. Judge share of cost - only worth flagging if a Full/strong judge actually ran.
@@ -8318,7 +8349,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.69" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.70" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -8332,8 +8363,8 @@ $GuiXamlTemplate = @"
                 <TextBlock Text="RESULTS" Foreground="#7FA8CF" FontSize="10" FontWeight="SemiBold" Margin="2,0,0,6"/>
                 <Button Name="BtnCopyFinal" Style="{StaticResource RailButton}" Content="&#x1F4C4;  Full Answer" Height="30" Margin="0,0,0,4"
                         Padding="12,0,0,0" ToolTip="Open the final answer in a separate window."/>
-                <Button Name="BtnCopyQuick" Style="{StaticResource RailButton}" Content="&#x1F4CB;  Copy" Height="30" Margin="0,0,0,4"
-                        Padding="12,0,0,0" ToolTip="Copy the final answer to the clipboard."/>
+                <Button Name="BtnCopyQuick" Style="{StaticResource RailButton}" Content="&#x1F4CB;  Copy Full Answer" Height="30" Margin="0,0,0,4"
+                        Padding="12,0,0,0" ToolTip="Copy the full answer to the clipboard."/>
                 <Button Name="BtnImproved" Style="{StaticResource RailButton}" Content="&#x1F4DD;  Improved Prompt" Height="30" Margin="0,0,0,4"
                         IsEnabled="False" Padding="12,0,0,0" ToolTip="Open the improved version of your prompt produced by the judge (available after a run)."/>
                 <Button Name="BtnOpenFolder" Style="{StaticResource RailButton}" Content="&#x1F4C1;  Open Folder" Height="30" Margin="0,0,0,4"
@@ -9467,6 +9498,18 @@ $Script:Ctl_BtnRun.Add_Click({
     catch {
         Add-GuiLog -Tag "ERROR" -Message ("Failed to write prompt file: " + $_.Exception.Message)
         return
+    }
+
+    # v0.8.70: persist the pre-run cost prediction into the run folder so the Cost & Metrics tab and the
+    # HTML report can compare predicted vs actual later - works for this run and when a past run is
+    # reloaded (the right-rail compare only covers the current in-memory run).
+    if ($null -ne $Script:PreRunPredictedCostUsd) {
+        try {
+            $PredObj = [PSCustomObject]@{ PredictedCostUsd = [double]$Script:PreRunPredictedCostUsd }
+            [System.IO.File]::WriteAllText((Join-Path $Script:CurrentRunFolder "pre_run_prediction.json"), ($PredObj | ConvertTo-Json), (New-Object System.Text.UTF8Encoding($false)))
+        }
+        catch {
+        }
     }
 
     $SplitMode = [string]$Script:Ctl_SplitCombo.SelectedItem
