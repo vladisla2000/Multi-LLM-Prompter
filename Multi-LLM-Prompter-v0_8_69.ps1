@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.68 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.69 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.68:
+# Changes through v0.8.69:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -495,6 +495,18 @@
 #       and cost math unchanged. (Also this session: verified the v0.8.54/55 RunFinalVerifier offline -
 #       wiring + parser unit-tested - see notes; the live LLM call still needs a keyed run to confirm.)
 #
+#  105. v0.8.69: Verifier cost is now counted in the run totals. A keyed run confirmed the v0.8.54/55
+#       final verifier works end-to-end, but exposed that its API call was missing from the headline
+#       cost: timing_summary.EstimatedCostUsd / AiRequestCount / token totals and CostByRole/CostByModel
+#       only summed Answer + Judge, so with the verifier ON the GUI cost card, the Cost & Metrics grids,
+#       the HTML report total, and the cost recommendations all UNDERSTATED real spend by the verifier
+#       amount. Fix: the verifier post-pass now appends its request to $AllRequestMetrics with a new
+#       "Verifier" role (via New-RequestMetricObject), so every run-level total built after the post-pass
+#       includes it; CostByRole adds a Verifier row only when the verifier actually ran (off-by-default
+#       stays byte-identical - no $0 row). Per-task TaskSummary (built before the post-pass) keeps the
+#       answer+judge production cost, so total = sum(per-task) + Verifier. Get-EstimatedCostUsd and the
+#       cost math are unchanged; this only stops a real call from being dropped from the aggregates.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -509,7 +521,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.68"
+$ToolVersion = "v0.8.69"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -4732,6 +4744,15 @@ if ($RunFinalVerifier -eq $true) {
             -Retries $MaxRetries
 
         $VerifierResult = Update-ResultCostEstimate -Result $VerifierResult
+
+        # v0.8.69: count the verifier's API call in the run-level cost/token totals. It is appended to
+        # $AllRequestMetrics with Role "Verifier" so CostByRole, CostByModel, AiRequestCount, the token
+        # totals, and the timing EstimatedCostUsd (all built after this post-pass) include it instead of
+        # the verifier cost silently dropping out of the headline total. Per-task TaskSummary (built
+        # before this pass) keeps the answer+judge production cost; the new Verifier role accounts for
+        # the rest, so total = sum(per-task) + Verifier. Cost math (Get-EstimatedCostUsd) is unchanged.
+        $AllRequestMetrics += New-RequestMetricObject -Result $VerifierResult -Role "Verifier" -TaskId $Tr.TaskId -TaskTitle $Tr.TaskTitle -RequestName ("Task_" + $Tr.TaskId + "_Verifier_" + $VerifierResult.Provider) -StageName "AI_VerifierRequest"
+
         $Verdict = Get-VerifierVerdict -Text $VerifierResult.Text
         $IssueCount = @($Verdict.issues).Count
 
@@ -4873,6 +4894,9 @@ foreach ($RequestMetric in @($AllRequestMetrics)) {
 
 $CostByRole = @()
 $KnownRoles = @("Answer", "Judge")
+# v0.8.69: show a Verifier role only when the final verifier actually ran, so an off-by-default
+# verifier never adds a $0 row, but an enabled verifier's cost is visible alongside Answer/Judge.
+if (@($AllRequestMetrics | Where-Object { $_.Role -eq "Verifier" }).Count -gt 0) { $KnownRoles += "Verifier" }
 foreach ($RoleName in $KnownRoles) {
     $RoleMetrics = @($AllRequestMetrics | Where-Object { $_.Role -eq $RoleName })
     $RoleDuration = 0.0
@@ -8294,7 +8318,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.68" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.69" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
