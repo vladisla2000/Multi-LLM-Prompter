@@ -4,8 +4,8 @@
 > This English file is the source of truth; keep both in sync on changes.
 
 Last updated: 2026-06-17
-Current version: **v0.8.76** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_76.ps1` (~10,430 lines, ~430 KB).
+Current version: **v0.8.77** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_77.ps1` (~10,440 lines, ~430 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -32,7 +32,8 @@ estimates, sidebar + inspector rail, menus, personas, clarification gate, cost b
 -> v0.8.73 (review fixes: rail "Pop-out Answer"; Improved Prompt no longer a dead end; plain preset labels)
 -> v0.8.74 (real fix for the clipped Tasks select-all header checkbox: ColumnHeaderHeight=36 + 16x16 box)
 -> v0.8.75 (header checkbox: wrap in an explicit-height Grid - the header presenter ignored center alignment)
--> v0.8.76 (REVERT v0.8.75 - the Grid hid the header checkbox; restored the visible v0.8.74 bare box).
+-> v0.8.76 (REVERT v0.8.75 - the Grid hid the header checkbox; restored the visible v0.8.74 bare box)
+-> v0.8.77 (header checkbox clip FIXED + visually verified via off-screen render: Top + Margin 0,5,0,0).
 
 ## THIS SESSION (2026-06-17) - READ FIRST
 
@@ -44,7 +45,7 @@ This session resumed ownership at v0.8.71 and shipped **v0.8.72**.
 The docs/helper/harness work shipped via **PR #1** (`chore/docs-helper-harness`), which is now
 **MERGED to `main`** (merge commit `8fcde6d`). Everything since - v0.8.56 through v0.8.72 -
 is committed directly on `main` (one commit per version, per the versioning rule). Current `main`
-HEAD is the v0.8.76 commit.
+HEAD is the v0.8.77 commit.
 
 What shipped this session:
 - Re-synced all docs from the stale v0.8.2 handoff to the live code (this file, DEVELOPER.md, the
@@ -137,7 +138,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_76.ps1` - ~10,430 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_77.ps1` - ~10,440 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -459,6 +460,15 @@ UIReady; timer stopped + child killed on Closing.
   decision with the user: the residual minor top-clip plus the fact that the header checkbox is REDUNDANT
   with the existing "Enable All" / "Disable All" buttons - either remove the header checkbox or keep
   tuning. XAML/layout only; frozen functions, judge contract, routing, cost math unchanged.
+- v0.8.77: header checkbox clip FIXED and VISUALLY VERIFIED. Broke the blind loop by rendering the
+  realized Tasks grid off-screen to a PNG (RenderTargetBitmap) and actually looking at + measuring the
+  pixels - see the new "GUI render-verify" technique in section 8. Finding: the DataGridColumnHeader
+  content sits with a ~5-7px negative top offset and the default presenter ignores
+  `VerticalContentAlignment=Center`, so the 16x16 box was pinned to the top and cropped. Fix:
+  `VerticalAlignment="Top"` + `Margin="0,5,0,0"` on the bare checkbox -> box lands at y~12.5-28.5 inside
+  the 36px header, fully visible and aligned with the column labels (confirmed in a 4x composite render).
+  NOT a Grid wrapper (that vanished in v0.8.75). XAML/layout only; frozen functions, judge contract,
+  routing, cost math unchanged.
 
 ---
 
@@ -531,6 +541,15 @@ UIReady; timer stopped + child killed on Closing.
   paren balance == 0, Add_Click count as expected, diff the FROZEN functions to prove untouched,
   grep that prompt $-tokens stay backtick-escaped.
 - Logs/outputs under C:\Temp. Color is never the sole meaning carrier.
+- GUI render-verify (v0.8.77): when a visual/pixel issue can't be judged from XAML alone (clipping,
+  alignment, overlap), do NOT guess blindly. Render the realized control off-screen to a PNG and LOOK:
+  in an STA runspace, `XamlReader.Load` the AST-extracted `$GuiXamlTemplate`, `$win.Show()` at a far
+  off-screen `Left/Top`, **select the tab that hosts the control** (TabControl virtualizes - an unselected
+  tab's content has ActualHeight 0), set a dummy `ItemsSource` for DataGrids, pump the dispatcher to
+  `ApplicationIdle` + `UpdateLayout()` (DataGrid headers generate on a deferred pass), then
+  `RenderTargetBitmap.Render(control)` to a PNG (use dpi = 96*N for an N x zoom) and Read the PNG.
+  `TransformToAncestor` gives exact child-vs-parent offsets to measure clipping numerically. This caught
+  that the DataGridColumnHeader presenter ignores `VerticalContentAlignment=Center`.
 
 ---
 

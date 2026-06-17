@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.76 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.77 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.76:
+# Changes through v0.8.77:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -573,6 +573,17 @@
 #       "Enable All" / "Disable All" buttons are being resolved with the user. XAML/layout only; frozen
 #       functions, judge contract, routing, cost math unchanged.
 #
+#  113. v0.8.77: header checkbox clip FIXED for real, and VERIFIED visually. Used an off-screen
+#       RenderTargetBitmap of the realized Tasks grid (select the Tasks tab, pump the dispatcher to
+#       ApplicationIdle so the DataGrid generates its header) to actually SEE the pixels + measure the
+#       checkbox's position inside its DataGridColumnHeader. Finding: the header content sits with a
+#       ~5-7px negative top offset and the default presenter ignores VerticalContentAlignment=Center,
+#       so the 16x16 box was pinned to the top and the top ~5px was cropped. Fix: VerticalAlignment=Top
+#       + Margin="0,5,0,0" on the bare checkbox, which lands it at y~12.5-28.5 inside the 36px header -
+#       fully visible and aligned with the column labels (confirmed in a 4x composite render). No Grid
+#       wrapper (that vanished in v0.8.75). XAML/layout only; frozen functions, judge contract, routing,
+#       cost math unchanged.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -587,7 +598,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.76"
+$ToolVersion = "v0.8.77"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -8432,7 +8443,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.76" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.77" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
           <TextBlock Text="by VladSp + AI" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
@@ -8864,7 +8875,7 @@ $GuiXamlTemplate = @"
                 <DataGridTemplateColumn Width="48">
                   <DataGridTemplateColumn.Header>
                     <CheckBox Name="ChkTaskRunAll" IsThreeState="True" Focusable="False"
-                              Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,5,0,0"
                               ToolTip="Enable or disable all detected tasks"/>
                   </DataGridTemplateColumn.Header>
                   <DataGridTemplateColumn.CellTemplate>

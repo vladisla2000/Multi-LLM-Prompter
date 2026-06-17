@@ -2,7 +2,7 @@
 
 ## Shape
 
-- Single-file PS 5.1 / ISE tool (~10,430 lines as of v0.8.76). `$LaunchGui = $true` runs the
+- Single-file PS 5.1 / ISE tool (~10,440 lines as of v0.8.77). `$LaunchGui = $true` runs the
   WPF GUI; `$false` runs the classic CLI pipeline.
 - The SAME .ps1 runs as a hidden headless child for the actual pipeline work
   (`MULTILLM_HEADLESS=1`). GUI writes `gui_prompt.txt`, pre-creates the run folder,
