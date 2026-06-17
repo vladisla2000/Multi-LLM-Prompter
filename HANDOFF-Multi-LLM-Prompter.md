@@ -4,8 +4,8 @@
 > This English file is the source of truth; keep both in sync on changes.
 
 Last updated: 2026-06-16
-Current version: **v0.8.60** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_60.ps1` (~9,560 lines, ~416 KB).
+Current version: **v0.8.61** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_61.ps1` (~9,580 lines, ~416 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -23,14 +23,15 @@ estimates, sidebar + inspector rail, menus, personas, clarification gate, cost b
 -> v0.8.53 (Stop kills the whole backend process tree) -> v0.8.54 (RunFinalVerifier, opt-in)
 -> v0.8.55 (GUI toggle for the verifier) -> v0.8.56 (report/banner version strings use $ToolVersion) -> v0.8.57 (first-run wording + cost labels) -> v0.8.58 (How-it-works strip + cost on Run button)
 -> v0.8.59 (Run button auto-sizes to its label - MinWidth, fixes the clipped "est. $X.XX")
--> v0.8.60 (input restructure: expert controls collapsed into an "Advanced settings" Expander).
+-> v0.8.60 (input restructure: expert controls collapsed into an "Advanced settings" Expander)
+-> v0.8.61 (left panel reworked from jump-nav into an action rail; clickable recent runs).
 
 ## THIS SESSION (2026-06-16) - READ FIRST
 
 The docs/helper/harness work shipped via **PR #1** (`chore/docs-helper-harness`), which is now
-**MERGED to `main`** (merge commit `8fcde6d`). Everything since - v0.8.56 through v0.8.60 -
+**MERGED to `main`** (merge commit `8fcde6d`). Everything since - v0.8.56 through v0.8.61 -
 is committed directly on `main` (one commit per version, per the versioning rule). Current `main`
-HEAD is the v0.8.60 commit.
+HEAD is the v0.8.61 commit.
 
 What shipped this session:
 - Re-synced all docs from the stale v0.8.2 handoff to the live code (this file, DEVELOPER.md, the
@@ -123,7 +124,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_60.ps1` - ~9,560 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_61.ps1` - ~9,580 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -367,8 +368,26 @@ UIReady; timer stopped + child killed on Closing.
   17/17 named controls findable, IsExpanded=False). Selected models stay visible in the header model
   panel, so collapsing hides no state; Preset stays on the always-visible essentials line (widened to
   220). Pure XAML layout move; no logic, frozen functions, judge contract, routing, or cost math
-  changed. STILL TO FOLLOW (need a live GUI pass): dismissable quick-start card, tab/queue empty
-  states, and folding the separate "Full Answer" window button into a single "View Answer" action.
+  changed.
+- v0.8.61: left panel reworked from a confusing jump-nav into a real **ACTION RAIL**, answering "the
+  role of the left tabs is not clear." The old SaaS-style jump-tabs (Runs/Prompts/Presets/Models) only
+  shortcut to controls already on the single screen, and the "Vlad / Pro Plan" account card implied a
+  non-existent account model. Now the rail is where you act: **pinned top** = Run / Stop / Detect Tasks;
+  **scroll** = New Run, Results (Full Answer / Copy / Improved Prompt / Run Folder), Recent runs;
+  **pinned footer** = Settings / Exit / app version. The whole bottom action bar (ZONE 4) was removed and
+  its buttons moved into the rail with their exact Names intact, so every handler + state routine
+  (`Update-RunButtonState`, `Set-GuiBusy` enabling Stop / disabling Run, post-run enabling of Full
+  Answer/Copy/Improved) works unchanged. Removed: the 4 jump-nav buttons, the dead `Set-SidebarActiveItem`,
+  the account card, and the duplicate "Config" button (folded into the rail Settings entry, which now owns
+  the ContextMenu). NEW: Recent-run rows are clickable Buttons (`BtnSideRecent1..4`, run-folder path in
+  `.Tag`) that load a past run via the new **`Open-PastRun`** - it reuses the same folder-parameterized
+  loaders `Complete-GuiRun` uses (`Update-TasksGridFromSummary` / `Update-MetricsTabFromRun` /
+  `Update-RightRailFromRun` + final_answer.md + transcript) and refuses to load while a run is in progress
+  (`$Script:IsBusy`). Validated: parse 0 errors; XAML-load smoke test (23/23 expected controls present,
+  the 6 removed controls gone, no duplicate-Name error); harness PASS=48/0; Add_Click 44->39 and function
+  count 119 held (-Set-SidebarActiveItem, +Open-PastRun) as expected. STILL TO FOLLOW (need a live GUI
+  pass): dismissable quick-start card, tab/queue empty states, and folding "Full Answer" into a single
+  "View Answer" action.
 
 ---
 

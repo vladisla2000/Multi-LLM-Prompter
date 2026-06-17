@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.60 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.61 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.60:
+# Changes through v0.8.61:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -403,6 +403,21 @@
 #       Preset stays on the always-visible essentials line (widened to 220). Pure XAML layout move;
 #       no logic, frozen functions, judge contract, routing, or cost math changed.
 #
+#   97. v0.8.61: Left panel reworked from a confusing jump-nav into a real ACTION RAIL. The cramped
+#       bottom action bar (ZONE 4) was removed and its buttons moved into the left rail, keeping their
+#       exact Names so every handler + state routine (Update-RunButtonState, Set-GuiBusy enabling Stop /
+#       disabling Run, post-run enabling of Full Answer/Copy/Improved) works unchanged. Rail layout:
+#       pinned top = Run / Stop / Detect Tasks; scroll = New Run, Results (Full Answer, Copy, Improved
+#       Prompt, Run Folder), Recent runs; pinned footer = Settings / Exit / app version. Removed the
+#       redundant jump-nav buttons (Runs/Prompts/Presets/Models), the dead Set-SidebarActiveItem, the
+#       fake "Vlad / Pro Plan" account card, and the duplicate Config button (folded into the rail
+#       Settings entry, which now owns the ContextMenu). Recent-run entries are now clickable Buttons
+#       (BtnSideRecent1..4) that load a past run via the new Open-PastRun (reuses the same folder-
+#       parameterized loaders Complete-GuiRun uses: Update-TasksGridFromSummary / Update-MetricsTabFromRun
+#       / Update-RightRailFromRun + final_answer.md + transcript; guarded against loading mid-run).
+#       GUI/layout + one new read-only loader; frozen functions, judge contract, routing, cost math
+#       unchanged.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -417,7 +432,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.60"
+$ToolVersion = "v0.8.61"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -5131,7 +5146,6 @@ $Script:RunPromptChars   = 0
 $Script:TaskReviewRows   = $null
 $Script:LastTaskReviewEstimate = $null
 $Script:PreRunPredictedCostUsd = $null
-$Script:SidebarActiveItem = "runs"
 $Script:SkipTaskReviewVisualSync = $false
 $Script:IsRefreshingTaskGrid = $false
 $Script:SuppressOverrideCombo = $false
@@ -5477,31 +5491,6 @@ function New-GuiBrush {
     return New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($ColorText))
 }
 
-function Set-SidebarActiveItem {
-    param([string]$ItemId)
-
-    $Script:SidebarActiveItem = $ItemId
-    $ActiveBrush = New-GuiBrush -ColorText "#1B4A86"
-    $BaseBrush = New-GuiBrush -ColorText "#0C2742"
-    $Pairs = @(
-        @{ Id = "runs"; Button = $Script:Ctl_BtnSideRuns },
-        @{ Id = "prompts"; Button = $Script:Ctl_BtnSidePrompts },
-        @{ Id = "presets"; Button = $Script:Ctl_BtnSidePresets },
-        @{ Id = "models"; Button = $Script:Ctl_BtnSideModels },
-        @{ Id = "settings"; Button = $Script:Ctl_BtnSideSettings }
-    )
-
-    foreach ($Pair in $Pairs) {
-        if ($null -eq $Pair.Button) { continue }
-        if ($Pair.Id -eq $ItemId) {
-            $Pair.Button.Background = $ActiveBrush
-        }
-        else {
-            $Pair.Button.Background = $BaseBrush
-        }
-    }
-}
-
 function Format-RecentRunAge {
     param([datetime]$When)
 
@@ -5527,12 +5516,22 @@ function Update-SidebarRecentRuns {
         $Script:Ctl_TxtSideRecent3Time,
         $Script:Ctl_TxtSideRecent4Time
     )
+    $ButtonControls = @(
+        $Script:Ctl_BtnSideRecent1,
+        $Script:Ctl_BtnSideRecent2,
+        $Script:Ctl_BtnSideRecent3,
+        $Script:Ctl_BtnSideRecent4
+    )
 
     if ($null -eq $NameControls[0]) { return }
 
     for ($i = 0; $i -lt $NameControls.Count; $i++) {
         if ($null -ne $NameControls[$i]) { $NameControls[$i].Text = "" }
         if ($null -ne $TimeControls[$i]) { $TimeControls[$i].Text = "" }
+        if ($null -ne $ButtonControls[$i]) {
+            $ButtonControls[$i].Tag = $null
+            $ButtonControls[$i].IsEnabled = $false
+        }
     }
 
     $Runs = @()
@@ -5554,6 +5553,11 @@ function Update-SidebarRecentRuns {
         if ($i -ge $NameControls.Count) { break }
         if ($null -ne $NameControls[$i]) { $NameControls[$i].Text = [string]$Runs[$i].Name }
         if ($null -ne $TimeControls[$i]) { $TimeControls[$i].Text = Format-RecentRunAge -When $Runs[$i].LastWriteTime }
+        if ($null -ne $ButtonControls[$i]) {
+            $ButtonControls[$i].Tag = [string]$Runs[$i].FullName
+            $ButtonControls[$i].IsEnabled = $true
+            $ButtonControls[$i].ToolTip = "Load results from " + [string]$Runs[$i].Name
+        }
     }
 }
 
@@ -5807,10 +5811,9 @@ function Reset-GuiForNewRun {
     }
     if ($null -ne $Script:Ctl_BtnImproved) { $Script:Ctl_BtnImproved.IsEnabled = $false }
 
-    Set-SidebarActiveItem -ItemId "prompts"
     [void](Select-MainTab -Header "Full Answer")
     Set-GuiStatus "New run ready"
-    Add-GuiLog -Tag "INFO" -Message "New run draft opened from sidebar."
+    Add-GuiLog -Tag "INFO" -Message "New run draft opened from the left rail."
     if ($null -ne $Script:Ctl_PromptBox) { $Script:Ctl_PromptBox.Focus() | Out-Null }
     Update-RunButtonState
 }
@@ -6861,6 +6864,58 @@ function Complete-GuiRun {
     Update-RightRailFromRun -RunFolderPath $Script:CurrentRunFolder -StatusText $Outcome
 }
 
+function Open-PastRun {
+    param([string]$RunFolderPath)
+
+    if ([string]::IsNullOrWhiteSpace($RunFolderPath)) { return }
+    if (-not (Test-Path -LiteralPath $RunFolderPath)) {
+        Add-GuiLog -Tag "WARN" -Message ("Run folder not found: " + $RunFolderPath)
+        Set-GuiStatus "That run folder no longer exists"
+        Update-SidebarRecentRuns
+        return
+    }
+    if ($Script:IsBusy -eq $true) {
+        Add-GuiLog -Tag "WARN" -Message "A run is in progress - stop or finish it before loading a past run."
+        Set-GuiStatus "Cannot load a past run while a run is in progress"
+        return
+    }
+
+    $RunName = Split-Path -Path $RunFolderPath -Leaf
+    $Script:CurrentRunFolder = $RunFolderPath
+
+    $FinalPath = Join-Path $RunFolderPath "final_answer.md"
+    $Script:CurrentFinalAnswerPath = $FinalPath
+    $FinalText = Get-FileTextSafe -Path $FinalPath
+
+    $SummaryLoaded = Update-TasksGridFromSummary -RunFolderPath $RunFolderPath
+    Update-MetricsTabFromRun -RunFolderPath $RunFolderPath
+
+    $TranscriptFile = Join-Path $RunFolderPath "console_transcript.txt"
+    if ($null -ne $Script:Ctl_RunLogBox) {
+        $Script:Ctl_RunLogBox.Text = Get-FileTextSafe -Path $TranscriptFile -MaxChars 40000
+        $Script:Ctl_RunLogBox.ScrollToEnd()
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($FinalText)) {
+        if ($null -ne $Script:Ctl_FinalBox) { $Script:Ctl_FinalBox.Text = $FinalText }
+        $Script:CurrentImprovedPrompt = Get-ImprovedPromptFromFinal -FinalText $FinalText
+        if ($null -ne $Script:Ctl_BtnImproved) {
+            $Script:Ctl_BtnImproved.IsEnabled = (-not [string]::IsNullOrWhiteSpace($Script:CurrentImprovedPrompt))
+        }
+        [void](Select-MainTab -Header "Full Answer")
+    }
+    else {
+        if ($null -ne $Script:Ctl_FinalBox) { $Script:Ctl_FinalBox.Text = "(This run has no final_answer.md - see the Tasks and Run Log tabs.)" }
+        if ($null -ne $Script:Ctl_BtnImproved) { $Script:Ctl_BtnImproved.IsEnabled = $false }
+        [void](Select-MainTab -Header "Tasks")
+    }
+
+    Update-RightRailFromRun -RunFolderPath $RunFolderPath -StatusText "Loaded"
+    if ($null -ne $Script:Ctl_HdrRunFolder) { $Script:Ctl_HdrRunFolder.Text = $RunName }
+    Set-GuiStatus ("Loaded past run: " + $RunName)
+    Add-GuiLog -Tag "INFO" -Message ("Loaded past run from " + $RunFolderPath + " (summaryLoaded=" + $SummaryLoaded + ")")
+}
+
 function Get-ImprovedPromptFromFinal {
     param([string]$FinalText)
 
@@ -7639,88 +7694,127 @@ $GuiXamlTemplate = @"
       </DockPanel>
     </Border>
 
-    <!-- REDESIGN SIDEBAR NAVIGATION -->
-    <Border DockPanel.Dock="Left" Width="168" Background="#0C2742" BorderBrush="#0B2545" BorderThickness="0,0,1,0">
+    <!-- LEFT ACTION RAIL (v0.8.61: actions moved here from the old bottom bar; jump-nav removed) -->
+    <Border DockPanel.Dock="Left" Width="192" Background="#0C2742" BorderBrush="#0B2545" BorderThickness="0,0,1,0">
       <DockPanel LastChildFill="True">
-        <Border DockPanel.Dock="Bottom" Background="#0B2545" Margin="10,8,10,10" Padding="10,9" MinHeight="64">
-          <DockPanel LastChildFill="True">
-            <Button Name="BtnSideUserSettings" DockPanel.Dock="Right" Content="&#x2699;" Width="28" Height="28"
-                    Background="#0B2545" Foreground="#B7D2EA" BorderThickness="0" Margin="6,0,0,0"
-                    ToolTip="Open settings"/>
-            <Border DockPanel.Dock="Left" Width="40" Height="40" Background="#0078D7" Margin="0,0,8,0">
-              <TextBlock Text="VM" Foreground="White" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-            <StackPanel VerticalAlignment="Center">
-              <TextBlock Text="Vlad" Foreground="White" FontWeight="SemiBold"/>
-              <TextBlock Text="Pro Plan" Foreground="#9DC3E6" FontSize="10" Margin="0,2,0,0"/>
-            </StackPanel>
+        <!-- Primary actions: pinned at the top so Run / Stop / Detect are always visible (v0.8.61) -->
+        <StackPanel DockPanel.Dock="Top" Margin="10,10,10,2">
+          <Button Name="BtnRun" Content="&#x25B6; Run" Height="40" Margin="0,0,0,5"
+                  Background="#0B6A0B" Foreground="White" FontWeight="SemiBold" BorderThickness="0"
+                  HorizontalContentAlignment="Center"
+                  ToolTip="Run the selected tasks. Answer models run in parallel per task, then the Judge compares and synthesizes."/>
+          <Button Name="BtnStop" Content="&#x25A0; Stop" Height="30" Margin="0,0,0,5"
+                  Background="#A4262C" Foreground="White" BorderThickness="0" IsEnabled="False"
+                  HorizontalContentAlignment="Center"
+                  ToolTip="Stop the current run (kills the hidden child process)."/>
+          <Button Name="BtnDetect" Content="&#x1F50D;  Detect Tasks" Height="32"
+                  Background="#1B4A86" Foreground="White" BorderThickness="0"
+                  HorizontalContentAlignment="Left" Padding="14,0,0,0"
+                  ToolTip="Split the prompt into tasks and preview them in the Tasks tab. This is the exact same split the run will use."/>
+        </StackPanel>
+
+        <!-- Footer: settings + exit + app version, pinned at the bottom (v0.8.61) -->
+        <StackPanel DockPanel.Dock="Bottom" Margin="10,6,10,10">
+          <Border Background="#0B2545" Height="1" Margin="0,0,0,8"/>
+          <DockPanel LastChildFill="True" Margin="0,0,0,8">
+            <Button Name="BtnExit" DockPanel.Dock="Right" Content="&#x2716; Exit" Width="62" Height="30"
+                    Background="#0C2742" Foreground="#9DC3E6" BorderThickness="0" Margin="6,0,0,0"
+                    ToolTip="Close Multi-LLM Prompter."/>
+            <Button Name="BtnSideSettings" Content="&#x2699;  Settings" Height="30"
+                    Background="#0C2742" Foreground="White" BorderThickness="0"
+                    HorizontalContentAlignment="Left" Padding="12,0,0,0"
+                    ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
-        </Border>
+          <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.61" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+        </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <StackPanel Margin="8,8,8,8">
-            <Button Name="BtnSideNewRun" Content="+  New Run" Height="36" Margin="0,0,0,10"
-                    Background="#0078D7" Foreground="White" BorderThickness="0" FontWeight="SemiBold"
-                    HorizontalContentAlignment="Center" ToolTip="Clear the current draft and start a new run"/>
+          <StackPanel Margin="10,8,10,8">
+            <Button Name="BtnSideNewRun" Content="+  New Run" Height="32" Margin="0,0,0,2"
+                    Background="#0C2742" Foreground="White" BorderThickness="0"
+                    HorizontalContentAlignment="Left" Padding="14,0,0,0"
+                    ToolTip="Clear the current draft and start a new run."/>
 
-            <Button Name="BtnSideRuns" Content="&#x1F4C1;  Runs" Height="34" Margin="0,1"
-                    Background="#1B4A86" Foreground="White" BorderThickness="0"
-                    HorizontalContentAlignment="Left" Padding="14,0,0,0"/>
-            <Button Name="BtnSidePrompts" Content="&#x1F4DD;  Prompts" Height="34" Margin="0,1"
-                    Background="#0C2742" Foreground="White" BorderThickness="0"
-                    HorizontalContentAlignment="Left" Padding="14,0,0,0"/>
-            <Button Name="BtnSidePresets" Content="&#x1F4C4;  Presets" Height="34" Margin="0,1"
-                    Background="#0C2742" Foreground="White" BorderThickness="0"
-                    HorizontalContentAlignment="Left" Padding="14,0,0,0"/>
-            <Button Name="BtnSideModels" Content="&#x1F9E0;  Models" Height="34" Margin="0,1"
-                    Background="#0C2742" Foreground="White" BorderThickness="0"
-                    HorizontalContentAlignment="Left" Padding="14,0,0,0"/>
-            <Button Name="BtnSideSettings" Content="&#x2699;  Settings" Height="34" Margin="0,1"
-                    Background="#0C2742" Foreground="White" BorderThickness="0"
-                    HorizontalContentAlignment="Left" Padding="14,0,0,0"/>
+            <Border Background="#0B2545" Height="1" Margin="0,10,0,8"/>
+            <TextBlock Text="Results" Foreground="#9DC3E6" FontSize="11" Margin="2,0,0,6"/>
 
-            <TextBlock Text="RECENT RUNS" Foreground="#9DC3E6" FontSize="10" Margin="0,18,0,8"/>
+            <Button Name="BtnCopyFinal" Content="&#x1F4C4;  Full Answer" Height="30" Margin="0,0,0,2"
+                    Background="#0C2742" Foreground="White" BorderThickness="0"
+                    HorizontalContentAlignment="Left" Padding="14,0,0,0"
+                    ToolTip="Open the final answer in a separate window."/>
+            <Button Name="BtnCopyQuick" Content="&#x1F4CB;  Copy" Height="30" Margin="0,0,0,2"
+                    Background="#0C2742" Foreground="White" BorderThickness="0"
+                    HorizontalContentAlignment="Left" Padding="14,0,0,0"
+                    ToolTip="Copy the final answer to the clipboard."/>
+            <Button Name="BtnImproved" Content="&#x1F4DD;  Improved Prompt" Height="30" Margin="0,0,0,2"
+                    Background="#0C2742" Foreground="White" BorderThickness="0" IsEnabled="False"
+                    HorizontalContentAlignment="Left" Padding="14,0,0,0"
+                    ToolTip="Open the improved version of your prompt produced by the judge (available after a run)."/>
+            <Button Name="BtnOpenFolder" Content="&#x1F4C1;  Run Folder" Height="30" Margin="0,0,0,2"
+                    Background="#0C2742" Foreground="White" BorderThickness="0"
+                    HorizontalContentAlignment="Left" Padding="14,0,0,0"
+                    ToolTip="Open the run output folder in Explorer."/>
 
-            <Grid Margin="0,0,0,8">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="16"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-              </Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="&#x25CF;" Foreground="#13A10E" FontSize="11" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="1" Name="TxtSideRecent1Name" Text="No runs yet" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="2" Name="TxtSideRecent1Time" Text="" Foreground="#9DC3E6" FontSize="10" Margin="8,0,0,0" VerticalAlignment="Center"/>
-            </Grid>
-            <Grid Margin="0,0,0,8">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="16"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-              </Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="&#x25CF;" Foreground="#13A10E" FontSize="11" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="1" Name="TxtSideRecent2Name" Text="" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="2" Name="TxtSideRecent2Time" Text="" Foreground="#9DC3E6" FontSize="10" Margin="8,0,0,0" VerticalAlignment="Center"/>
-            </Grid>
-            <Grid Margin="0,0,0,8">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="16"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-              </Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="&#x25CF;" Foreground="#13A10E" FontSize="11" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="1" Name="TxtSideRecent3Name" Text="" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="2" Name="TxtSideRecent3Time" Text="" Foreground="#9DC3E6" FontSize="10" Margin="8,0,0,0" VerticalAlignment="Center"/>
-            </Grid>
-            <Grid Margin="0,0,0,8">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="16"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-              </Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="&#x25CF;" Foreground="#13A10E" FontSize="11" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="1" Name="TxtSideRecent4Name" Text="" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-              <TextBlock Grid.Column="2" Name="TxtSideRecent4Time" Text="" Foreground="#9DC3E6" FontSize="10" Margin="8,0,0,0" VerticalAlignment="Center"/>
-            </Grid>
+            <Border Background="#0B2545" Height="1" Margin="0,10,0,8"/>
+            <TextBlock Text="Recent runs" Foreground="#9DC3E6" FontSize="11" Margin="2,0,0,6"/>
+
+            <Button Name="BtnSideRecent1" Height="30" Margin="0,0,0,3" Background="#0C2742" Foreground="White"
+                    BorderThickness="0" HorizontalContentAlignment="Stretch" Padding="6,0" IsEnabled="False"
+                    ToolTip="Load this run's results">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="14"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="&#x25CF;" Foreground="#13A10E" FontSize="10" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Name="TxtSideRecent1Name" Text="No runs yet" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" Name="TxtSideRecent1Time" Text="" Foreground="#9DC3E6" FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
+            <Button Name="BtnSideRecent2" Height="30" Margin="0,0,0,3" Background="#0C2742" Foreground="White"
+                    BorderThickness="0" HorizontalContentAlignment="Stretch" Padding="6,0" IsEnabled="False"
+                    ToolTip="Load this run's results">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="14"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="&#x25CF;" Foreground="#13A10E" FontSize="10" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Name="TxtSideRecent2Name" Text="" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" Name="TxtSideRecent2Time" Text="" Foreground="#9DC3E6" FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
+            <Button Name="BtnSideRecent3" Height="30" Margin="0,0,0,3" Background="#0C2742" Foreground="White"
+                    BorderThickness="0" HorizontalContentAlignment="Stretch" Padding="6,0" IsEnabled="False"
+                    ToolTip="Load this run's results">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="14"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="&#x25CF;" Foreground="#13A10E" FontSize="10" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Name="TxtSideRecent3Name" Text="" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" Name="TxtSideRecent3Time" Text="" Foreground="#9DC3E6" FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
+            <Button Name="BtnSideRecent4" Height="30" Margin="0,0,0,3" Background="#0C2742" Foreground="White"
+                    BorderThickness="0" HorizontalContentAlignment="Stretch" Padding="6,0" IsEnabled="False"
+                    ToolTip="Load this run's results">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="14"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="&#x25CF;" Foreground="#13A10E" FontSize="10" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Name="TxtSideRecent4Name" Text="" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="2" Name="TxtSideRecent4Time" Text="" Foreground="#9DC3E6" FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"/>
+              </Grid>
+            </Button>
           </StackPanel>
         </ScrollViewer>
       </DockPanel>
@@ -7895,31 +7989,7 @@ $GuiXamlTemplate = @"
       </DockPanel>
     </Border>
 
-    <!-- ZONE 4: ACTIONS -->
-    <Border DockPanel.Dock="Bottom" Background="#F3F3F3" BorderThickness="0,1,0,0" BorderBrush="#CCCCCC" Padding="8,3">
-      <DockPanel LastChildFill="True">
-        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" Margin="10,0,0,0">
-          <Button Name="BtnStop" Content="&#x25A0; Stop" Width="76" Height="28" ToolTip="Stop the current run (kills the hidden child process)."
-                  Background="#A4262C" Foreground="White" Margin="0,0,4,0" IsEnabled="False"/>
-          <Button Name="BtnExit" Content="&#x2716; Exit" Width="72" Height="28" Margin="4,0,0,0" ToolTip="Close Multi-LLM Prompter."/>
-        </StackPanel>
-        <WrapPanel Orientation="Horizontal" ItemHeight="30">
-          <Button Name="BtnDetect" Content="&#x1F50D; Detect Tasks" Width="118" Height="28" Margin="0,0,5,3"
-                  ToolTip="Split the prompt into tasks and preview them in the Tasks tab. This is the exact same split the run will use."/>
-          <Button Name="BtnRun" Content="&#x25B6; Run" MinWidth="124" Height="28" ToolTip="Run the selected tasks. Answer models run in parallel per task, then the Judge compares and synthesizes."
-                  Background="#0B6A0B" Foreground="White" FontWeight="SemiBold" Margin="0,0,5,3"/>
-          <Button Name="BtnCopyFinal" Content="&#x1F4C4; Full Answer" Width="110" Height="28"
-                  Background="#0078D7" Foreground="White" FontWeight="SemiBold" Margin="0,0,5,3"
-                  ToolTip="Open the final answer in a separate window"/>
-          <Button Name="BtnCopyQuick" Content="&#x1F4CB; Copy" Width="72" Height="28" Margin="0,0,5,3"
-                  ToolTip="Copy the final answer to the clipboard"/>
-          <Button Name="BtnImproved" Content="&#x1F4DD; Improved Prompt" Width="122" Height="28" ToolTip="Open the improved version of your prompt produced by the judge (available after a run)."
-                  Margin="0,0,5,3" IsEnabled="False"/>
-          <Button Name="BtnOpenFolder" Content="&#x1F4C1; Run Folder" Width="98" Height="28" Margin="0,0,5,3" ToolTip="Open the run output folder in Explorer."/>
-          <Button Name="BtnOpenConfig" Content="&#x2699; Config" Width="78" Height="28" Margin="0,0,5,3" ToolTip="Settings: open the config file or set API keys."/>
-        </WrapPanel>
-      </DockPanel>
-    </Border>
+    <!-- ZONE 4 actions moved into the left action rail (v0.8.61); Config folded into the rail Settings entry -->
 
     <!-- How it works strip (v0.8.58) -->
     <Border DockPanel.Dock="Top" Background="#F2F6FF" BorderThickness="0,0,0,1" BorderBrush="#CCCCCC" Padding="10,5">
@@ -8253,7 +8323,6 @@ $Script:Ctl_ChkCheapJudge = $GuiWindow.FindName("ChkCheapJudge")
 $Script:Ctl_ChkRunVerifier = $GuiWindow.FindName("ChkRunVerifier")
 $Script:Ctl_CheapJudgeCombo = $GuiWindow.FindName("CheapJudgeCombo")
 $Script:Ctl_BtnOpenFolder = $GuiWindow.FindName("BtnOpenFolder")
-$Script:Ctl_BtnOpenConfig = $GuiWindow.FindName("BtnOpenConfig")
 $Script:Ctl_StatusText   = $GuiWindow.FindName("StatusText")
 $Script:Ctl_PbTasks      = $GuiWindow.FindName("PbTasks")
 $Script:Ctl_LblTasksDone = $GuiWindow.FindName("LblTasksDone")
@@ -8267,12 +8336,12 @@ $Script:Ctl_HdrJudgeCheap = $GuiWindow.FindName("HdrJudgeCheap")
 $Script:Ctl_HdrApiStatus = $GuiWindow.FindName("HdrApiStatus")
 $Script:Ctl_BtnHdrSetKeys = $GuiWindow.FindName("BtnHdrSetKeys")
 $Script:Ctl_BtnSideNewRun = $GuiWindow.FindName("BtnSideNewRun")
-$Script:Ctl_BtnSideRuns = $GuiWindow.FindName("BtnSideRuns")
-$Script:Ctl_BtnSidePrompts = $GuiWindow.FindName("BtnSidePrompts")
-$Script:Ctl_BtnSidePresets = $GuiWindow.FindName("BtnSidePresets")
-$Script:Ctl_BtnSideModels = $GuiWindow.FindName("BtnSideModels")
 $Script:Ctl_BtnSideSettings = $GuiWindow.FindName("BtnSideSettings")
-$Script:Ctl_BtnSideUserSettings = $GuiWindow.FindName("BtnSideUserSettings")
+$Script:Ctl_TxtSideVersion = $GuiWindow.FindName("TxtSideVersion")
+$Script:Ctl_BtnSideRecent1 = $GuiWindow.FindName("BtnSideRecent1")
+$Script:Ctl_BtnSideRecent2 = $GuiWindow.FindName("BtnSideRecent2")
+$Script:Ctl_BtnSideRecent3 = $GuiWindow.FindName("BtnSideRecent3")
+$Script:Ctl_BtnSideRecent4 = $GuiWindow.FindName("BtnSideRecent4")
 $Script:Ctl_TxtSideRecent1Name = $GuiWindow.FindName("TxtSideRecent1Name")
 $Script:Ctl_TxtSideRecent1Time = $GuiWindow.FindName("TxtSideRecent1Time")
 $Script:Ctl_TxtSideRecent2Name = $GuiWindow.FindName("TxtSideRecent2Name")
@@ -9318,7 +9387,7 @@ $Script:Ctl_MiSetKeys = New-Object System.Windows.Controls.MenuItem
 $Script:Ctl_MiSetKeys.Header = "Set API keys..."
 [void]$Script:Ctl_ConfigMenu.Items.Add($Script:Ctl_MiOpenConfig)
 [void]$Script:Ctl_ConfigMenu.Items.Add($Script:Ctl_MiSetKeys)
-$Script:Ctl_BtnOpenConfig.ContextMenu = $Script:Ctl_ConfigMenu
+$Script:Ctl_BtnSideSettings.ContextMenu = $Script:Ctl_ConfigMenu
 
 $Script:Ctl_MiOpenConfig.Add_Click({
     if (Test-Path -LiteralPath $ConfigPath) {
@@ -9410,66 +9479,14 @@ if ($null -ne $Script:Ctl_TopMenu) {
     })
 }
 
-$Script:Ctl_BtnOpenConfig.Add_Click({
-    $Script:Ctl_ConfigMenu.PlacementTarget = $Script:Ctl_BtnOpenConfig
-    $Script:Ctl_ConfigMenu.Placement = [System.Windows.Controls.Primitives.PlacementMode]::Bottom
-    $Script:Ctl_ConfigMenu.IsOpen = $true
-})
-
 if ($null -ne $Script:Ctl_BtnSideNewRun) {
     $Script:Ctl_BtnSideNewRun.Add_Click({
         Reset-GuiForNewRun
     })
 }
 
-if ($null -ne $Script:Ctl_BtnSideRuns) {
-    $Script:Ctl_BtnSideRuns.Add_Click({
-        Set-SidebarActiveItem -ItemId "runs"
-        [void](Select-MainTab -Header "Tasks")
-        Set-GuiStatus "Runs: showing the task grid"
-        Add-GuiLog -Tag "INFO" -Message "Runs: switched to the Tasks tab (detected tasks / run results)."
-    })
-}
-
-if ($null -ne $Script:Ctl_BtnSidePrompts) {
-    $Script:Ctl_BtnSidePrompts.Add_Click({
-        Set-SidebarActiveItem -ItemId "prompts"
-        if ($null -ne $Script:Ctl_PromptBox) {
-            $Script:Ctl_PromptBox.Focus() | Out-Null
-            try { $Script:Ctl_PromptBox.CaretIndex = $Script:Ctl_PromptBox.Text.Length } catch { }
-        }
-        Set-GuiStatus "Prompts: the prompt box is focused - type or edit, then Detect Tasks / Run"
-        Add-GuiLog -Tag "INFO" -Message "Prompts: focus moved to the prompt box above the tabs."
-    })
-}
-
-if ($null -ne $Script:Ctl_BtnSidePresets) {
-    $Script:Ctl_BtnSidePresets.Add_Click({
-        Set-SidebarActiveItem -ItemId "presets"
-        if ($null -ne $Script:Ctl_PresetCombo -and $Script:Ctl_PresetCombo.IsEnabled -eq $true) {
-            $Script:Ctl_PresetCombo.Focus() | Out-Null
-            $Script:Ctl_PresetCombo.IsDropDownOpen = $true
-        }
-        Set-GuiStatus "Presets: pick a starting prompt preset"
-        Add-GuiLog -Tag "INFO" -Message "Presets: opened the preset selector (in the input row)."
-    })
-}
-
-if ($null -ne $Script:Ctl_BtnSideModels) {
-    $Script:Ctl_BtnSideModels.Add_Click({
-        Set-SidebarActiveItem -ItemId "models"
-        if ($null -ne $Script:Ctl_ModelACombo -and $Script:Ctl_ModelACombo.IsEnabled -eq $true) {
-            $Script:Ctl_ModelACombo.Focus() | Out-Null
-            $Script:Ctl_ModelACombo.IsDropDownOpen = $true
-        }
-        Set-GuiStatus "Models: Model A / B and the Quality / Fast judges are in the input row"
-        Add-GuiLog -Tag "INFO" -Message "Models: opened the Model A selector (in the input row)."
-    })
-}
-
 if ($null -ne $Script:Ctl_BtnSideSettings) {
     $Script:Ctl_BtnSideSettings.Add_Click({
-        Set-SidebarActiveItem -ItemId "settings"
         if ($null -ne $Script:Ctl_ConfigMenu) {
             $Script:Ctl_ConfigMenu.PlacementTarget = $Script:Ctl_BtnSideSettings
             $Script:Ctl_ConfigMenu.Placement = [System.Windows.Controls.Primitives.PlacementMode]::Right
@@ -9479,13 +9496,19 @@ if ($null -ne $Script:Ctl_BtnSideSettings) {
     })
 }
 
-if ($null -ne $Script:Ctl_BtnSideUserSettings) {
-    $Script:Ctl_BtnSideUserSettings.Add_Click({
-        Set-SidebarActiveItem -ItemId "settings"
-        $Script:Ctl_ConfigMenu.PlacementTarget = $Script:Ctl_BtnSideUserSettings
-        $Script:Ctl_ConfigMenu.Placement = [System.Windows.Controls.Primitives.PlacementMode]::Right
-        $Script:Ctl_ConfigMenu.IsOpen = $true
-    })
+# Recent-run buttons in the left rail: click to load that past run's results (v0.8.61).
+$RecentRunButtons = @($Script:Ctl_BtnSideRecent1, $Script:Ctl_BtnSideRecent2, $Script:Ctl_BtnSideRecent3, $Script:Ctl_BtnSideRecent4)
+foreach ($RecentRunButton in $RecentRunButtons) {
+    if ($null -ne $RecentRunButton) {
+        $RecentRunButton.Add_Click({
+            param($EventSender, $EventArgs)
+            if ($null -eq $EventSender) { return }
+            $PathTag = [string]$EventSender.Tag
+            if (-not [string]::IsNullOrWhiteSpace($PathTag)) {
+                Open-PastRun -RunFolderPath $PathTag
+            }
+        })
+    }
 }
 
 $Script:Ctl_BtnExit.Add_Click({
@@ -9544,7 +9567,7 @@ $Script:Ctl_HdrJudgeCheap.Text = $AnthropicModel_Judge
 
 Update-RunButtonState
 Update-ApiStatusHeader
-Set-SidebarActiveItem -ItemId "runs"
+if ($null -ne $Script:Ctl_TxtSideVersion) { $Script:Ctl_TxtSideVersion.Text = $ToolVersion }
 Update-SidebarRecentRuns
 Update-RightRailFromPreview
 Update-RightRailApiStatus

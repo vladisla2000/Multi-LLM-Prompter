@@ -19,10 +19,13 @@ Actions / dark log / StatusBar.
 - Tasks grid columns: Id / Type / Work / OK / Ans / Judge / JudgeModel / Compl / Tokens
   / Cost / Title / Error. Row coloring via XAML DataTriggers (Completeness=WARN amber,
   Success=False red) - color is never the sole meaning carrier.
-- Actions: Detect Tasks | Run #0B6A0B | Full Answer (separate window) | Copy | Improved
-  Prompt | Run Folder | Config || Stop #A4262C | Exit.
-- Config button (v0.8.5) is a small settings menu (ContextMenu built in CODE, not XAML,
-  to dodge the named-MenuItem namescope gotcha): "Open config file" / "Set API keys...".
+- Actions live in the LEFT ACTION RAIL since v0.8.61 (the old bottom ZONE 4 bar was removed).
+  The buttons (Run #0B6A0B, Stop #A4262C, Detect Tasks, New Run, Full Answer (separate window),
+  Copy, Improved Prompt, Run Folder, Settings, Exit) kept their Names, so handlers/state logic are
+  unchanged - only their XAML location moved. See the sidebar entry below.
+- Settings menu (v0.8.5) is a ContextMenu built in CODE (not XAML, to dodge the named-MenuItem
+  namescope gotcha): "Open config file" / "Set API keys...". v0.8.61 folded the old separate "Config"
+  button into the rail "Settings" entry, which now owns this ContextMenu.
 - UI naming (v0.8.7): NEVER show "Cheap" in the UI. Labels are "Quality judge" (the
   selected/Full-forced judge) and "Review judge" (Light/ReviewOnly), checkbox "Use review
   judge for light checks". The internal vars/config keys/env var (`AnthropicModel_JudgeCheap`,
@@ -84,8 +87,16 @@ and per-task routing overrides are all DONE. Current state:
 
 ## Other GUI surface added since v0.8.8
 
-- Left sidebar nav (v0.8.19) with working actions (v0.8.50): Runs -> Tasks tab, Prompts ->
-  focus prompt, Presets/Models -> open dropdowns, Settings -> config menu.
+- Left panel: started as a SaaS-style jump-nav (v0.8.19/v0.8.50: Runs/Prompts/Presets/Models/Settings
+  shortcuts + a fake "Pro Plan" account card). v0.8.61 REWORKED it into a real ACTION RAIL because the
+  jump-tabs read as page-nav but were just shortcuts to on-screen controls. Now: pinned top = Run / Stop
+  / Detect Tasks; scroll = New Run, Results (Full Answer / Copy / Improved Prompt / Run Folder),
+  Recent runs; pinned footer = Settings / Exit / app version. The redundant jump-nav buttons, the dead
+  `Set-SidebarActiveItem`, and the account card were removed. Recent-run rows are now clickable Buttons
+  (`BtnSideRecent1..4`, path in `.Tag`) that call `Open-PastRun` to load a past run's results - it reuses
+  the same folder-parameterized loaders as `Complete-GuiRun` (`Update-TasksGridFromSummary` /
+  `Update-MetricsTabFromRun` / `Update-RightRailFromRun` + final_answer.md + transcript) and refuses to
+  load mid-run (`$Script:IsBusy`).
 - Right inspector rail (v0.8.20, widened through v0.8.42): Run Details / Cost / Token Usage /
   Latency / Run Health. Cost card has a configurable budget (`Output.CostBudgetUsd`, 0 = off,
   v0.8.29), predicted-vs-actual delta (v0.8.30), and approx ILS at rate 3.7 (v0.8.34/0.8.38).
