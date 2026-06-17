@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.65 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.66 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.65:
+# Changes through v0.8.66:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -465,6 +465,17 @@
 #       Names/handlers unchanged (BtnRun/BtnStop/BtnDetect/BtnOpenFolder/BtnSideRecent1-4 etc.), so
 #       Update-RunButtonState / Set-GuiBusy / Open-PastRun keep working. No logic/judge/routing/cost change.
 #
+#  102. v0.8.66: Cost by Role, Cost by Model, and the Task Summary now render as real DataGrids (normal
+#       GUI view) in the "Cost & Metrics" tab instead of monospace text. The tab is now a scrolling panel:
+#       a recommendations card (MetricsRecBox) on top, then the three sortable/aligned DataGrids
+#       (CostRoleGrid / CostModelGrid / MetricsTaskGrid), then a small timing+warnings text box
+#       (MetricsBox) at the bottom. Update-MetricsTabFromRun now sets each grid's ItemsSource from the
+#       run-folder JSON (cost_summary_by_role/by_model, task_results_summary) and only the timing/warnings
+#       stay as text; new Clear-MetricsTab resets all of them and is called from the two run-reset paths.
+#       Shared GridHeader/GridNum styles added to Window.Resources. Read-only over the same files the
+#       child already writes; no new output files, no pipeline/child/judge/routing/cost-math change.
+#       (Format-AlignedTable is now unused but kept.)
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -479,7 +490,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.65"
+$ToolVersion = "v0.8.66"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -5831,7 +5842,7 @@ function Reset-GuiForNewRun {
     if ($null -ne $Script:Ctl_PromptBox) { $Script:Ctl_PromptBox.Text = "" }
     if ($null -ne $Script:Ctl_PresetCombo) { $Script:Ctl_PresetCombo.SelectedItem = "Custom" }
     if ($null -ne $Script:Ctl_FinalBox) { $Script:Ctl_FinalBox.Text = "" }
-    if ($null -ne $Script:Ctl_MetricsBox) { $Script:Ctl_MetricsBox.Text = "" }
+    Clear-MetricsTab
     if ($null -ne $Script:Ctl_RunLogBox) { $Script:Ctl_RunLogBox.Text = "" }
     if ($null -ne $Script:Ctl_TasksGrid) { $Script:Ctl_TasksGrid.ItemsSource = $null }
     if ($null -ne $Script:Ctl_TasksEditBox) { $Script:Ctl_TasksEditBox.Text = "" }
@@ -6892,199 +6903,159 @@ function Get-CostRecommendations {
     return $Recs
 }
 
+function Clear-MetricsTab {
+    # Reset every control on the Cost & Metrics tab (recommendations text, the three DataGrids,
+    # and the timing/warnings text box) when starting or clearing a run (v0.8.66).
+    if ($null -ne $Script:Ctl_MetricsRecBox)   { $Script:Ctl_MetricsRecBox.Text = "Run a prompt to see cost recommendations." }
+    if ($null -ne $Script:Ctl_MetricsBox)      { $Script:Ctl_MetricsBox.Text = "" }
+    if ($null -ne $Script:Ctl_CostRoleGrid)    { $Script:Ctl_CostRoleGrid.ItemsSource = $null }
+    if ($null -ne $Script:Ctl_CostModelGrid)   { $Script:Ctl_CostModelGrid.ItemsSource = $null }
+    if ($null -ne $Script:Ctl_MetricsTaskGrid) { $Script:Ctl_MetricsTaskGrid.ItemsSource = $null }
+}
+
 function Update-MetricsTabFromRun {
+    # v0.8.66: Cost by Role, Cost by Model, and the Task Summary now render as real DataGrids (normal
+    # GUI view) instead of monospace text. Recommendations stay as text at the top; timing + warnings
+    # stay as text at the bottom. All read-only over the run-folder JSON the child already wrote.
     param([string]$RunFolderPath)
 
+    $UsdFmt = "0.######"
+
+    # --- Recommendations (offline heuristics; see Get-CostRecommendations) ---
+    $RecLines = @(Get-CostRecommendations -RunFolderPath $RunFolderPath)
+    if ($null -ne $Script:Ctl_MetricsRecBox) {
+        if (@($RecLines).Count -gt 0) {
+            $Script:Ctl_MetricsRecBox.Text = ($RecLines -join [Environment]::NewLine)
+        }
+        else {
+            $Script:Ctl_MetricsRecBox.Text = "No cost data for this run yet."
+        }
+    }
+
+    # --- Cost by Role grid ---
+    $CostRole = $null
+    $CostRoleText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "cost_summary_by_role.json")
+    if (-not [string]::IsNullOrWhiteSpace($CostRoleText)) {
+        try { $CostRole = $CostRoleText | ConvertFrom-Json -ErrorAction Stop } catch { $CostRole = $null }
+    }
+    if ($null -ne $Script:Ctl_CostRoleGrid) {
+        $RoleRows = @()
+        foreach ($Item in @($CostRole)) {
+            if ($null -eq $Item) { continue }
+            $RoleRows += [PSCustomObject]@{
+                Role            = [string]$Item.Role
+                RequestCount    = $Item.RequestCount
+                DurationSeconds = $Item.DurationSeconds
+                InputTokens     = $Item.InputTokens
+                OutputTokens    = $Item.OutputTokens
+                TotalTokens     = $Item.TotalTokens
+                CostText        = "$" + ($UsdFmt -f [double]$Item.EstimatedCostUsd)
+            }
+        }
+        $Script:Ctl_CostRoleGrid.ItemsSource = $RoleRows
+    }
+
+    # --- Cost by Model grid ---
+    $CostModel = $null
+    $CostModelText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "cost_summary_by_model.json")
+    if (-not [string]::IsNullOrWhiteSpace($CostModelText)) {
+        try { $CostModel = $CostModelText | ConvertFrom-Json -ErrorAction Stop } catch { $CostModel = $null }
+    }
+    if ($null -ne $Script:Ctl_CostModelGrid) {
+        $ModelRows = @()
+        foreach ($Item in @($CostModel)) {
+            if ($null -eq $Item) { continue }
+            $ModelRows += [PSCustomObject]@{
+                Provider        = [string]$Item.Provider
+                Model           = [string]$Item.Model
+                Roles           = [string]$Item.Roles
+                RequestCount    = $Item.RequestCount
+                DurationSeconds = $Item.DurationSeconds
+                InputTokens     = $Item.InputTokens
+                OutputTokens    = $Item.OutputTokens
+                TotalTokens     = $Item.TotalTokens
+                CostText        = "$" + ($UsdFmt -f [double]$Item.EstimatedCostUsd)
+            }
+        }
+        $Script:Ctl_CostModelGrid.ItemsSource = $ModelRows
+    }
+
+    # --- Task summary grid ---
+    $TaskSummary = $null
+    $TaskSummaryText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "task_results_summary.json")
+    if (-not [string]::IsNullOrWhiteSpace($TaskSummaryText)) {
+        try { $TaskSummary = $TaskSummaryText | ConvertFrom-Json -ErrorAction Stop } catch { $TaskSummary = $null }
+    }
+    if ($null -ne $Script:Ctl_MetricsTaskGrid) {
+        $TaskRows = @()
+        foreach ($Item in @($TaskSummary)) {
+            if ($null -eq $Item) { continue }
+            $Comp = "OK"
+            if ($Item.CompletenessWarning -eq $true) { $Comp = "WARN" }
+            $TaskRows += [PSCustomObject]@{
+                TaskId         = $Item.TaskId
+                TaskType       = [string]$Item.TaskType
+                WorkMode       = [string]$Item.WorkMode
+                Success        = $Item.Success
+                AnswerCount    = $Item.AnswerCount
+                JudgeMode      = [string]$Item.JudgeMode
+                JudgeModelUsed = [string]$Item.JudgeModelUsed
+                Completeness   = $Comp
+                TotalTokens    = $Item.TotalTokens
+                CostText       = "$" + ($UsdFmt -f [double]$Item.EstimatedCostUsd)
+                Title          = [string]$Item.TaskTitle
+            }
+        }
+        $Script:Ctl_MetricsTaskGrid.ItemsSource = $TaskRows
+    }
+
+    # --- Timing + warnings (text) ---
     $Lines = @()
 
-    # Cost recommendations first (v0.8.64): offline heuristics over this run + recent prior runs.
-    $RecLines = @(Get-CostRecommendations -RunFolderPath $RunFolderPath)
-    if (@($RecLines).Count -gt 0) {
-        $Lines += "COST RECOMMENDATIONS"
-        $Lines += "===================="
-        $Lines += $RecLines
+    $Timing = $null
+    $TimingText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "timing_summary.json")
+    if (-not [string]::IsNullOrWhiteSpace($TimingText)) {
+        try { $Timing = $TimingText | ConvertFrom-Json -ErrorAction Stop } catch { $Timing = $null }
+    }
+    if ($null -ne $Timing) {
+        $Lines += "TIMING SUMMARY"
+        $Lines += "=============="
+        foreach ($Prop in $Timing.PSObject.Properties) {
+            if ($Prop.Name -ne "CostByRole" -and $Prop.Name -ne "CostByModel") {
+                $Lines += ("{0,-28} : {1}" -f $Prop.Name, $Prop.Value)
+            }
+        }
         $Lines += ""
     }
 
-    $TimingPath = Join-Path $RunFolderPath "timing_summary.json"
-    $TimingText = Get-FileTextSafe -Path $TimingPath
-
-    if (-not [string]::IsNullOrWhiteSpace($TimingText)) {
-        $Timing = $null
-        try {
-            $Timing = $TimingText | ConvertFrom-Json -ErrorAction Stop
-        }
-        catch {
-            $Timing = $null
-        }
-
-        if ($null -ne $Timing) {
-            $Lines += "TIMING SUMMARY"
-            $Lines += "--------------"
-            foreach ($Prop in $Timing.PSObject.Properties) {
-                if ($Prop.Name -ne "CostByRole" -and $Prop.Name -ne "CostByModel") {
-                    $Lines += ("{0,-28} : {1}" -f $Prop.Name, $Prop.Value)
-                }
-            }
-            $Lines += ""
-            $Lines += "TOTAL ESTIMATED COST"
-            $Lines += "--------------------"
-            $Lines += ("EstimatedCostUsd           : {0}" -f $Timing.EstimatedCostUsd)
-            $Lines += ""
-        }
-    }
-
-    $CostModelPath = Join-Path $RunFolderPath "cost_summary_by_model.json"
-    $CostModelText = Get-FileTextSafe -Path $CostModelPath
-
-    if (-not [string]::IsNullOrWhiteSpace($CostModelText)) {
-        $CostModel = $null
-        try {
-            $CostModel = $CostModelText | ConvertFrom-Json -ErrorAction Stop
-        }
-        catch {
-            $CostModel = $null
-        }
-
-        if ($null -ne $CostModel) {
-            $Lines += "COST BY MODEL"
-            $Lines += "============="
-            $ModelRows = @()
-            foreach ($Item in @($CostModel)) {
-                $ModelRows += , @(
-                    [string]$Item.Provider,
-                    [string]$Item.Model,
-                    [string]$Item.Roles,
-                    [string]$Item.RequestCount,
-                    [string]$Item.DurationSeconds,
-                    [string]$Item.InputTokens,
-                    [string]$Item.OutputTokens,
-                    [string]$Item.TotalTokens,
-                    ("$" + [string]$Item.EstimatedCostUsd)
-                )
-            }
-            $Lines += (Format-AlignedTable -Headers @("Provider", "Model", "Roles", "Reqs", "Seconds", "Input", "Output", "Total", "Cost USD") -Rows $ModelRows -RightAlign @($false, $false, $false, $true, $true, $true, $true, $true, $true))
-            $Lines += ""
-        }
-    }
-
-    $CostWarnPath = Join-Path $RunFolderPath "cost_warnings.json"
-    $CostWarnText = Get-FileTextSafe -Path $CostWarnPath
-
+    $CostWarn = $null
+    $CostWarnText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "cost_warnings.json")
     if (-not [string]::IsNullOrWhiteSpace($CostWarnText)) {
-        $CostWarn = $null
-        try {
-            $CostWarn = $CostWarnText | ConvertFrom-Json -ErrorAction Stop
-        }
-        catch {
-            $CostWarn = $null
-        }
-
-        $CostWarnItems = @($CostWarn)
-        if ($CostWarnItems.Count -gt 0) {
-            $Lines += "COST WARNINGS"
-            $Lines += "-------------"
-            foreach ($Item in $CostWarnItems) {
-                $Lines += ("[WARN] {0}|{1} : {2}" -f $Item.Provider, $Item.Model, $Item.Reason)
-                $Lines += ("{0,-28} : {1}" -f "Roles", $Item.Roles)
-                $Lines += ("{0,-28} : {1}" -f "Requests", $Item.RequestCount)
-                $Lines += ("{0,-28} : {1}" -f "InputTokens", $Item.InputTokens)
-                $Lines += ("{0,-28} : {1}" -f "OutputTokens", $Item.OutputTokens)
-                $Lines += ""
-            }
-        }
+        try { $CostWarn = $CostWarnText | ConvertFrom-Json -ErrorAction Stop } catch { $CostWarn = $null }
     }
-
-    $CostPath = Join-Path $RunFolderPath "cost_summary_by_role.json"
-    $CostText = Get-FileTextSafe -Path $CostPath
-
-    if (-not [string]::IsNullOrWhiteSpace($CostText)) {
-        $Cost = $null
-        try {
-            $Cost = $CostText | ConvertFrom-Json -ErrorAction Stop
-        }
-        catch {
-            $Cost = $null
-        }
-
-        if ($null -ne $Cost) {
-            $Lines += "COST BY ROLE"
-            $Lines += "============"
-            $RoleRows = @()
-            foreach ($Item in @($Cost)) {
-                $RoleRows += , @(
-                    [string]$Item.Role,
-                    [string]$Item.RequestCount,
-                    [string]$Item.DurationSeconds,
-                    [string]$Item.InputTokens,
-                    [string]$Item.OutputTokens,
-                    [string]$Item.TotalTokens,
-                    ("$" + [string]$Item.EstimatedCostUsd)
-                )
-            }
-            $Lines += (Format-AlignedTable -Headers @("Role", "Reqs", "Seconds", "Input", "Output", "Total", "Cost USD") -Rows $RoleRows -RightAlign @($false, $true, $true, $true, $true, $true, $true))
+    if ($null -ne $CostWarn -and @($CostWarn).Count -gt 0) {
+        $Lines += "COST WARNINGS"
+        $Lines += "============="
+        foreach ($Item in @($CostWarn)) {
+            $Lines += ("[WARN] {0}|{1} : {2}" -f $Item.Provider, $Item.Model, $Item.Reason)
+            $Lines += ("{0,-28} : {1}" -f "Roles", $Item.Roles)
+            $Lines += ("{0,-28} : {1}" -f "Requests", $Item.RequestCount)
+            $Lines += ("{0,-28} : {1}" -f "InputTokens", $Item.InputTokens)
+            $Lines += ("{0,-28} : {1}" -f "OutputTokens", $Item.OutputTokens)
             $Lines += ""
         }
     }
 
-    # Task summary table (v0.8.63): the same per-task summary the Full Answer window shows,
-    # now surfaced in the GUI Metrics tab too. Independent of the cost files above so it shows
-    # even if a cost summary is missing.
-    $TaskSummaryPath = Join-Path $RunFolderPath "task_results_summary.json"
-    $TaskSummaryText = Get-FileTextSafe -Path $TaskSummaryPath
-
-    if (-not [string]::IsNullOrWhiteSpace($TaskSummaryText)) {
-        $TaskSummary = $null
-        try {
-            $TaskSummary = $TaskSummaryText | ConvertFrom-Json -ErrorAction Stop
-        }
-        catch {
-            $TaskSummary = $null
-        }
-
-        if ($null -ne $TaskSummary) {
-            $TaskRows = @()
-            foreach ($Item in @($TaskSummary)) {
-                $Comp = "OK"
-                if ($Item.CompletenessWarning -eq $true) { $Comp = "WARN" }
-                $Title = [string]$Item.TaskTitle
-                if ($Title.Length -gt 48) { $Title = $Title.Substring(0, 45) + "..." }
-                $TaskRows += , @(
-                    [string]$Item.TaskId,
-                    [string]$Item.TaskType,
-                    [string]$Item.WorkMode,
-                    [string]$Item.Success,
-                    [string]$Item.AnswerCount,
-                    [string]$Item.JudgeMode,
-                    [string]$Item.JudgeModelUsed,
-                    $Comp,
-                    [string]$Item.TotalTokens,
-                    ("$" + [string]$Item.EstimatedCostUsd),
-                    $Title
-                )
-            }
-            $Lines += "TASK SUMMARY"
-            $Lines += "============"
-            $Lines += (Format-AlignedTable -Headers @("Id", "Type", "Work", "OK", "Ans", "Judge", "Judge Model", "Compl", "Tokens", "Cost USD", "Title") -Rows $TaskRows -RightAlign @($true, $false, $false, $false, $true, $false, $false, $false, $true, $true, $false))
-            $Lines += ""
-        }
-    }
-
-    $WarnPath = Join-Path $RunFolderPath "completeness_warnings.json"
-    $WarnText = Get-FileTextSafe -Path $WarnPath
-
-    if (-not [string]::IsNullOrWhiteSpace($WarnText)) {
+    $CompWarnText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "completeness_warnings.json")
+    if (-not [string]::IsNullOrWhiteSpace($CompWarnText)) {
         $Lines += "COMPLETENESS WARNINGS (raw JSON)"
         $Lines += "--------------------------------"
-        $Lines += $WarnText
+        $Lines += $CompWarnText
     }
 
-    if ($Lines.Count -eq 0) {
-        $Lines += "No metric files found yet in:"
-        $Lines += $RunFolderPath
+    if ($null -ne $Script:Ctl_MetricsBox) {
+        $Script:Ctl_MetricsBox.Text = ($Lines -join [Environment]::NewLine)
     }
-
-    $Script:Ctl_MetricsBox.Text = ($Lines -join [Environment]::NewLine)
 }
 
 function Complete-GuiRun {
@@ -8026,6 +7997,19 @@ $GuiXamlTemplate = @"
         </Setter.Value>
       </Setter>
     </Style>
+
+    <!-- Shared DataGrid styles (v0.8.66): header band + right-aligned numeric cell. -->
+    <Style x:Key="GridHeader" TargetType="DataGridColumnHeader">
+      <Setter Property="Background" Value="#1F4788"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Height" Value="26"/>
+      <Setter Property="Padding" Value="6,0"/>
+    </Style>
+    <Style x:Key="GridNum" TargetType="TextBlock">
+      <Setter Property="TextAlignment" Value="Right"/>
+      <Setter Property="Padding" Value="0,0,8,0"/>
+    </Style>
   </Window.Resources>
   <DockPanel>
 
@@ -8105,7 +8089,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.65" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.66" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -8620,9 +8604,78 @@ $GuiXamlTemplate = @"
         </Grid>
       </TabItem>
       <TabItem Header="Cost &amp; Metrics">
-        <TextBox Name="MetricsBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
-                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                 FontFamily="Consolas" FontSize="12" Background="White"/>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Background="#F3F3F3">
+          <StackPanel Margin="10">
+
+            <Border Background="White" BorderBrush="#D0D7DE" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,0,12">
+              <StackPanel>
+                <TextBlock Text="&#x1F4A1;  Cost recommendations" FontWeight="SemiBold" FontSize="13" Foreground="#0B2545" Margin="0,0,0,6"/>
+                <TextBox Name="MetricsRecBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                         BorderThickness="0" Background="White" FontFamily="Segoe UI" FontSize="12"
+                         Text="Run a prompt to see cost recommendations."/>
+              </StackPanel>
+            </Border>
+
+            <TextBlock Text="Cost by role" FontWeight="SemiBold" FontSize="13" Foreground="#0B2545" Margin="0,0,0,4"/>
+            <DataGrid Name="CostRoleGrid" AutoGenerateColumns="False" AlternatingRowBackground="#F2F6FF" RowBackground="White"
+                      SelectionMode="Single" GridLinesVisibility="Horizontal" HeadersVisibility="Column" CanUserAddRows="False"
+                      IsReadOnly="True" FontFamily="Segoe UI" FontSize="11" MaxHeight="150" Margin="0,0,0,14"
+                      ColumnHeaderStyle="{StaticResource GridHeader}">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Role" Binding="{Binding Role}" Width="*"/>
+                <DataGridTextColumn Header="Requests" Binding="{Binding RequestCount}" Width="84" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Seconds" Binding="{Binding DurationSeconds}" Width="84" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Input" Binding="{Binding InputTokens}" Width="84" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Output" Binding="{Binding OutputTokens}" Width="84" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Total" Binding="{Binding TotalTokens}" Width="84" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Cost USD" Binding="{Binding CostText}" Width="110" ElementStyle="{StaticResource GridNum}"/>
+              </DataGrid.Columns>
+            </DataGrid>
+
+            <TextBlock Text="Cost by model" FontWeight="SemiBold" FontSize="13" Foreground="#0B2545" Margin="0,0,0,4"/>
+            <DataGrid Name="CostModelGrid" AutoGenerateColumns="False" AlternatingRowBackground="#F2F6FF" RowBackground="White"
+                      SelectionMode="Single" GridLinesVisibility="Horizontal" HeadersVisibility="Column" CanUserAddRows="False"
+                      IsReadOnly="True" FontFamily="Segoe UI" FontSize="11" MaxHeight="190" Margin="0,0,0,14"
+                      ColumnHeaderStyle="{StaticResource GridHeader}">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Provider" Binding="{Binding Provider}" Width="90"/>
+                <DataGridTextColumn Header="Model" Binding="{Binding Model}" Width="*"/>
+                <DataGridTextColumn Header="Roles" Binding="{Binding Roles}" Width="110"/>
+                <DataGridTextColumn Header="Reqs" Binding="{Binding RequestCount}" Width="64" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Seconds" Binding="{Binding DurationSeconds}" Width="80" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Input" Binding="{Binding InputTokens}" Width="80" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Output" Binding="{Binding OutputTokens}" Width="80" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Total" Binding="{Binding TotalTokens}" Width="80" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Cost USD" Binding="{Binding CostText}" Width="100" ElementStyle="{StaticResource GridNum}"/>
+              </DataGrid.Columns>
+            </DataGrid>
+
+            <TextBlock Text="Task summary" FontWeight="SemiBold" FontSize="13" Foreground="#0B2545" Margin="0,0,0,4"/>
+            <DataGrid Name="MetricsTaskGrid" AutoGenerateColumns="False" AlternatingRowBackground="#F2F6FF" RowBackground="White"
+                      SelectionMode="Single" GridLinesVisibility="Horizontal" HeadersVisibility="Column" CanUserAddRows="False"
+                      IsReadOnly="True" FontFamily="Segoe UI" FontSize="11" MaxHeight="320" Margin="0,0,0,14"
+                      ColumnHeaderStyle="{StaticResource GridHeader}">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="#" Binding="{Binding TaskId}" Width="38" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Type" Binding="{Binding TaskType}" Width="84"/>
+                <DataGridTextColumn Header="Work" Binding="{Binding WorkMode}" Width="70"/>
+                <DataGridTextColumn Header="OK" Binding="{Binding Success}" Width="56"/>
+                <DataGridTextColumn Header="Ans" Binding="{Binding AnswerCount}" Width="46" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Judge" Binding="{Binding JudgeMode}" Width="78"/>
+                <DataGridTextColumn Header="Judge Model" Binding="{Binding JudgeModelUsed}" Width="150"/>
+                <DataGridTextColumn Header="Compl" Binding="{Binding Completeness}" Width="64"/>
+                <DataGridTextColumn Header="Tokens" Binding="{Binding TotalTokens}" Width="76" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Cost USD" Binding="{Binding CostText}" Width="90" ElementStyle="{StaticResource GridNum}"/>
+                <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*"/>
+              </DataGrid.Columns>
+            </DataGrid>
+
+            <TextBlock Text="Timing and warnings" FontWeight="SemiBold" FontSize="13" Foreground="#0B2545" Margin="0,0,0,4"/>
+            <TextBox Name="MetricsBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
+                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                     FontFamily="Consolas" FontSize="12" Background="White" Height="170"/>
+          </StackPanel>
+        </ScrollViewer>
       </TabItem>
       <TabItem Header="Run Log">
         <TextBox Name="RunLogBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
@@ -8677,6 +8730,10 @@ $Script:Ctl_MainTabs     = $GuiWindow.FindName("MainTabs")
 $Script:Ctl_FinalBox     = $GuiWindow.FindName("FinalBox")
 $Script:Ctl_TasksGrid    = $GuiWindow.FindName("TasksGrid")
 $Script:Ctl_MetricsBox   = $GuiWindow.FindName("MetricsBox")
+$Script:Ctl_MetricsRecBox   = $GuiWindow.FindName("MetricsRecBox")
+$Script:Ctl_CostRoleGrid    = $GuiWindow.FindName("CostRoleGrid")
+$Script:Ctl_CostModelGrid   = $GuiWindow.FindName("CostModelGrid")
+$Script:Ctl_MetricsTaskGrid = $GuiWindow.FindName("MetricsTaskGrid")
 $Script:Ctl_RunLogBox    = $GuiWindow.FindName("RunLogBox")
 $Script:Ctl_LogBox       = $GuiWindow.FindName("LogBox")
 $Script:Ctl_LblLogHeader = $GuiWindow.FindName("LblLogHeader")
@@ -9329,7 +9386,7 @@ $Script:Ctl_BtnRun.Add_Click({
     $Script:Ctl_LblTasksDone.Text = "Tasks: 0 / ?"
     $Script:Ctl_FinalBox.Text = ""
     $Script:CurrentFinalAnswerPath = ""
-    $Script:Ctl_MetricsBox.Text = ""
+    Clear-MetricsTab
     $Script:Ctl_RunLogBox.Text = ""
     if ($null -ne $Script:TaskReviewRows -and @($Script:TaskReviewRows).Count -gt 0) {
         foreach ($Row in @($Script:TaskReviewRows)) {
