@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.61 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.62 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.61:
+# Changes through v0.8.62:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -418,6 +418,17 @@
 #       GUI/layout + one new read-only loader; frozen functions, judge contract, routing, cost math
 #       unchanged.
 #
+#   98. v0.8.62: Clarify Prompt dialog reworked from two stacked boxes (one read-only list of ALL
+#       questions on top, one shared answer box below) into a scrolling list of per-question sections -
+#       each section shows the question AND its own answer box together, so the operator reads and
+#       answers each item in place. Section UI is built in CODE (Border > StackPanel > question TextBlock
+#       + answer TextBox per question) with the question text set via the .Text property, never embedded
+#       in XAML, so '<' '>' '&' in a question cannot break the parse. On "Add Answers and Run" the
+#       per-question answers are recombined into "Qn:/An:" pairs (blank answers skipped) and returned as
+#       the SAME single Clarification string the caller already appends under "Clarifications:" - so the
+#       GUI->prompt contract is unchanged; only the dialog layout and the (now richer, Q-paired) text
+#       differ. Pure GUI change; frozen functions, judge contract, routing, cost math untouched.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -432,7 +443,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.61"
+$ToolVersion = "v0.8.62"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -7418,16 +7429,12 @@ function Show-ClarifyingQuestionsWindow {
     <Grid Margin="10">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
-        <RowDefinition Height="120"/>
-        <RowDefinition Height="Auto"/>
         <RowDefinition Height="*"/>
       </Grid.RowDefinitions>
-      <TextBlock Grid.Row="0" Text="The prompt may be underspecified. Answer any questions that matter, or run anyway." FontWeight="SemiBold" Margin="0,0,0,6"/>
-      <TextBox Grid.Row="1" Name="ClarifyQuestionBox" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True"
-               VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" Background="White" Margin="0,0,0,8"/>
-      <TextBlock Grid.Row="2" Text="Your clarifications:" FontWeight="SemiBold" Margin="0,0,0,4"/>
-      <TextBox Grid.Row="3" Name="ClarifyAnswerBox" AcceptsReturn="True" TextWrapping="Wrap"
-               VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="12" Background="White"/>
+      <TextBlock Grid.Row="0" Text="The prompt may be underspecified. Answer any questions that matter, or run anyway." FontWeight="SemiBold" Margin="0,0,0,8"/>
+      <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,6,0">
+        <StackPanel Name="ClarifyItemsHost"/>
+      </ScrollViewer>
     </Grid>
   </DockPanel>
 </Window>
@@ -7446,23 +7453,62 @@ function Show-ClarifyingQuestionsWindow {
     }
 
     $ClarifyWindow.Owner = $GuiWindow
-    $QuestionBox = $ClarifyWindow.FindName("ClarifyQuestionBox")
-    $AnswerBox = $ClarifyWindow.FindName("ClarifyAnswerBox")
+    $ItemsHost = $ClarifyWindow.FindName("ClarifyItemsHost")
     $BtnAdd = $ClarifyWindow.FindName("ClarifyBtnAdd")
     $BtnRunAnyway = $ClarifyWindow.FindName("ClarifyBtnRunAnyway")
     $BtnCancel = $ClarifyWindow.FindName("ClarifyBtnCancel")
 
-    $QuestionLines = @()
+    # Build one section per question, each holding the question text AND its own answer box,
+    # so the operator reads and answers each item in place (v0.8.62). Question text is set via
+    # the .Text property (never embedded in XAML) so '<', '>', '&' in a question cannot break parse.
+    $BorderBrush = (New-Object System.Windows.Media.BrushConverter).ConvertFromString("#D0D7DE")
+    $AnswerItems = New-Object System.Collections.ArrayList
     $QuestionIndex = 0
     foreach ($Question in @($Questions)) {
         $QuestionIndex++
-        $QuestionLines += ([string]$QuestionIndex + ". " + [string]$Question)
+        $QuestionText = [string]$Question
+
+        $Section = New-Object System.Windows.Controls.Border
+        $Section.Background = [System.Windows.Media.Brushes]::White
+        $Section.BorderBrush = $BorderBrush
+        $Section.BorderThickness = New-Object System.Windows.Thickness -ArgumentList 1
+        $Section.Padding = New-Object System.Windows.Thickness -ArgumentList 10
+        $Section.Margin = New-Object System.Windows.Thickness -ArgumentList 0, 0, 0, 10
+
+        $Stack = New-Object System.Windows.Controls.StackPanel
+
+        $QLabel = New-Object System.Windows.Controls.TextBlock
+        $QLabel.Text = ([string]$QuestionIndex + ". " + $QuestionText)
+        $QLabel.TextWrapping = "Wrap"
+        $QLabel.FontWeight = "SemiBold"
+        $QLabel.Margin = New-Object System.Windows.Thickness -ArgumentList 0, 0, 0, 6
+
+        $ABox = New-Object System.Windows.Controls.TextBox
+        $ABox.AcceptsReturn = $true
+        $ABox.TextWrapping = "Wrap"
+        $ABox.MinHeight = 56
+        $ABox.VerticalScrollBarVisibility = "Auto"
+        $ABox.FontFamily = New-Object System.Windows.Media.FontFamily -ArgumentList "Consolas"
+        $ABox.FontSize = 12
+
+        [void]$Stack.Children.Add($QLabel)
+        [void]$Stack.Children.Add($ABox)
+        $Section.Child = $Stack
+        [void]$ItemsHost.Children.Add($Section)
+
+        [void]$AnswerItems.Add([PSCustomObject]@{ Index = $QuestionIndex; Question = $QuestionText; Box = $ABox })
     }
-    $QuestionBox.Text = ($QuestionLines -join [Environment]::NewLine)
 
     $BtnAdd.Add_Click({
         $Result.Action = "AddAndRun"
-        $Result.Clarification = [string]$AnswerBox.Text
+        $Pairs = @()
+        foreach ($Item in $AnswerItems) {
+            $Ans = [string]$Item.Box.Text
+            if (-not [string]::IsNullOrWhiteSpace($Ans)) {
+                $Pairs += ("Q" + [string]$Item.Index + ": " + $Item.Question.Trim() + [Environment]::NewLine + "A" + [string]$Item.Index + ": " + $Ans.Trim())
+            }
+        }
+        $Result.Clarification = ($Pairs -join ([Environment]::NewLine + [Environment]::NewLine))
         $ClarifyWindow.Close()
     })
 
@@ -7726,7 +7772,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.61" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.62" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
