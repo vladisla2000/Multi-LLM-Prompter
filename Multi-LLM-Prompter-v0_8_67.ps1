@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.66 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.67 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.66:
+# Changes through v0.8.67:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -476,6 +476,17 @@
 #       child already writes; no new output files, no pipeline/child/judge/routing/cost-math change.
 #       (Format-AlignedTable is now unused but kept.)
 #
+#  103. v0.8.67: HTML report (instead of an embedded web view). A new "HTML Report" button in the rail
+#       Results group builds a self-contained, modern-looking cost report (New-RunHtmlReport) for the
+#       current/loaded run and opens it in the default browser. The report has inline CSS (no external
+#       files, no JS, no API call) and contains the total cost, the offline cost recommendations,
+#       Cost by role / Cost by model / Task summary tables, the timing summary, and any warnings - all
+#       read from the run-folder JSON the child already wrote, written to cost_report.html in that folder.
+#       All dynamic text is HTML-escaped (ConvertTo-HtmlText) so titles/model ids/warnings cannot break
+#       the markup. Chosen over hosting WebView2 in-process, which would need the WebView2 runtime + three
+#       shipped DLLs + a JS<->PowerShell bridge - against the single-file PS 5.1 design. Read-only;
+#       no pipeline/child/judge/routing/cost-math change. Adds one Add_Click handler (40 total).
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -490,7 +501,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.66"
+$ToolVersion = "v0.8.67"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -7058,6 +7069,178 @@ function Update-MetricsTabFromRun {
     }
 }
 
+function ConvertTo-HtmlText {
+    # Minimal HTML escaping so run data (titles, model ids, warnings) can never break the markup.
+    param([string]$Text)
+    if ($null -eq $Text) { return "" }
+    $t = $Text -replace "&", "&amp;"
+    $t = $t -replace "<", "&lt;"
+    $t = $t -replace ">", "&gt;"
+    $t = $t -replace '"', "&quot;"
+    return $t
+}
+
+function New-RunHtmlReport {
+    # v0.8.67: build a self-contained, modern-looking HTML cost/metrics report for a run, written next
+    # to the run output as cost_report.html. No external files, no JS, no API call - just the run-folder
+    # JSON the child already wrote, rendered with inline CSS so it opens in any browser. Returns the file
+    # path, or $null when the folder is missing or has no cost/task/timing data yet.
+    param(
+        [string]$RunFolderPath,
+        [string]$ToolVersion
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RunFolderPath) -or (-not (Test-Path -LiteralPath $RunFolderPath))) {
+        return $null
+    }
+
+    $Timing = $null
+    $TimingText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "timing_summary.json")
+    if (-not [string]::IsNullOrWhiteSpace($TimingText)) {
+        try { $Timing = $TimingText | ConvertFrom-Json -ErrorAction Stop } catch { $Timing = $null }
+    }
+
+    $CostRole = $null
+    $CostRoleText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "cost_summary_by_role.json")
+    if (-not [string]::IsNullOrWhiteSpace($CostRoleText)) {
+        try { $CostRole = $CostRoleText | ConvertFrom-Json -ErrorAction Stop } catch { $CostRole = $null }
+    }
+
+    $CostModel = $null
+    $CostModelText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "cost_summary_by_model.json")
+    if (-not [string]::IsNullOrWhiteSpace($CostModelText)) {
+        try { $CostModel = $CostModelText | ConvertFrom-Json -ErrorAction Stop } catch { $CostModel = $null }
+    }
+
+    $TaskSummary = $null
+    $TaskSummaryText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "task_results_summary.json")
+    if (-not [string]::IsNullOrWhiteSpace($TaskSummaryText)) {
+        try { $TaskSummary = $TaskSummaryText | ConvertFrom-Json -ErrorAction Stop } catch { $TaskSummary = $null }
+    }
+
+    $CostWarn = $null
+    $CostWarnText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "cost_warnings.json")
+    if (-not [string]::IsNullOrWhiteSpace($CostWarnText)) {
+        try { $CostWarn = $CostWarnText | ConvertFrom-Json -ErrorAction Stop } catch { $CostWarn = $null }
+    }
+
+    if ($null -eq $CostRole -and $null -eq $TaskSummary -and $null -eq $Timing) {
+        return $null
+    }
+
+    $TotalCost = 0.0
+    if ($null -ne $Timing -and $null -ne $Timing.EstimatedCostUsd) {
+        $TotalCost = [double]$Timing.EstimatedCostUsd
+    }
+    elseif ($null -ne $CostRole) {
+        foreach ($r in @($CostRole)) { $TotalCost += [double]$r.EstimatedCostUsd }
+    }
+
+    $RecLines = @(Get-CostRecommendations -RunFolderPath $RunFolderPath)
+    $RunName = Split-Path -Leaf $RunFolderPath
+    $GeneratedAt = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.AppendLine('<!DOCTYPE html>')
+    [void]$sb.AppendLine('<html lang="en"><head><meta charset="utf-8">')
+    [void]$sb.AppendLine('<title>Multi-LLM Prompter - Cost Report</title>')
+    [void]$sb.AppendLine('<style>')
+    [void]$sb.AppendLine('*{box-sizing:border-box;} body{font-family:"Segoe UI",Arial,sans-serif;margin:0;background:#f3f3f3;color:#1b2545;}')
+    [void]$sb.AppendLine('.header{background:#0f3460;color:#fff;padding:18px 28px;} .header h1{margin:0;font-size:20px;} .header .sub{color:#b0c4de;font-size:13px;margin-top:4px;}')
+    [void]$sb.AppendLine('.wrap{max-width:1100px;margin:0 auto;padding:22px 28px 44px;}')
+    [void]$sb.AppendLine('.card{background:#fff;border:1px solid #d0d7de;border-radius:8px;padding:16px 18px;margin:0 0 20px;box-shadow:0 1px 3px rgba(0,0,0,.06);}')
+    [void]$sb.AppendLine('h2{font-size:15px;color:#0b2545;margin:0 0 10px;}')
+    [void]$sb.AppendLine('.total{font-size:34px;font-weight:700;color:#0b6a0b;} .total small{font-size:14px;color:#555;font-weight:600;}')
+    [void]$sb.AppendLine('table{border-collapse:collapse;width:100%;font-size:13px;} th{background:#1f4788;color:#fff;text-align:left;padding:7px 10px;font-weight:600;}')
+    [void]$sb.AppendLine('td{padding:6px 10px;border-bottom:1px solid #ececec;} tr:nth-child(even) td{background:#f2f6ff;} td.num,th.num{text-align:right;}')
+    [void]$sb.AppendLine('ul.recs{list-style:none;padding:0;margin:0;} ul.recs li{padding:8px 11px;border-left:4px solid #9aa7b4;background:#f7f9fc;margin-bottom:6px;border-radius:3px;}')
+    [void]$sb.AppendLine('li.warn{border-left-color:#a4262c;background:#fdecee;} li.ok{border-left-color:#0b6a0b;background:#eaf6ea;} li.info{border-left-color:#0078d7;background:#eef5fc;}')
+    [void]$sb.AppendLine('.muted{color:#777;font-size:12px;} pre{white-space:pre-wrap;font-family:Consolas,monospace;font-size:12px;color:#333;margin:0;}')
+    [void]$sb.AppendLine('</style></head><body>')
+
+    [void]$sb.AppendLine('<div class="header"><h1>Multi-LLM Prompter - Cost Report</h1>')
+    [void]$sb.AppendLine('<div class="sub">' + (ConvertTo-HtmlText $ToolVersion) + ' &middot; run ' + (ConvertTo-HtmlText $RunName) + ' &middot; generated ' + (ConvertTo-HtmlText $GeneratedAt) + '</div></div>')
+    [void]$sb.AppendLine('<div class="wrap">')
+
+    [void]$sb.AppendLine('<div class="card"><h2>Total estimated cost</h2><div class="total">$' + (ConvertTo-HtmlText ("{0:0.######}" -f $TotalCost)) + ' <small>USD</small></div></div>')
+
+    if (@($RecLines).Count -gt 0) {
+        [void]$sb.AppendLine('<div class="card"><h2>Cost recommendations</h2><ul class="recs">')
+        foreach ($line in $RecLines) {
+            $cls = "info"
+            $txt = [string]$line
+            if ($txt.StartsWith("[!]")) { $cls = "warn"; $txt = $txt.Substring(3).Trim() }
+            elseif ($txt.StartsWith("[ok]")) { $cls = "ok"; $txt = $txt.Substring(4).Trim() }
+            elseif ($txt.StartsWith("[i]")) { $cls = "info"; $txt = $txt.Substring(3).Trim() }
+            [void]$sb.AppendLine('<li class="' + $cls + '">' + (ConvertTo-HtmlText $txt) + '</li>')
+        }
+        [void]$sb.AppendLine('</ul></div>')
+    }
+
+    if ($null -ne $CostRole -and @($CostRole).Count -gt 0) {
+        [void]$sb.AppendLine('<div class="card"><h2>Cost by role</h2><table>')
+        [void]$sb.AppendLine('<tr><th>Role</th><th class="num">Requests</th><th class="num">Seconds</th><th class="num">Input</th><th class="num">Output</th><th class="num">Total</th><th class="num">Cost USD</th></tr>')
+        foreach ($r in @($CostRole)) {
+            if ($null -eq $r) { continue }
+            [void]$sb.AppendLine('<tr><td>' + (ConvertTo-HtmlText ([string]$r.Role)) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$r.RequestCount)) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$r.DurationSeconds)) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$r.InputTokens)) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$r.OutputTokens)) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$r.TotalTokens)) + '</td><td class="num">$' + (ConvertTo-HtmlText ("{0:0.######}" -f [double]$r.EstimatedCostUsd)) + '</td></tr>')
+        }
+        [void]$sb.AppendLine('</table></div>')
+    }
+
+    if ($null -ne $CostModel -and @($CostModel).Count -gt 0) {
+        [void]$sb.AppendLine('<div class="card"><h2>Cost by model</h2><table>')
+        [void]$sb.AppendLine('<tr><th>Provider</th><th>Model</th><th>Roles</th><th class="num">Reqs</th><th class="num">Seconds</th><th class="num">Input</th><th class="num">Output</th><th class="num">Total</th><th class="num">Cost USD</th></tr>')
+        foreach ($m in @($CostModel)) {
+            if ($null -eq $m) { continue }
+            [void]$sb.AppendLine('<tr><td>' + (ConvertTo-HtmlText ([string]$m.Provider)) + '</td><td>' + (ConvertTo-HtmlText ([string]$m.Model)) + '</td><td>' + (ConvertTo-HtmlText ([string]$m.Roles)) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$m.RequestCount)) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$m.DurationSeconds)) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$m.InputTokens)) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$m.OutputTokens)) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$m.TotalTokens)) + '</td><td class="num">$' + (ConvertTo-HtmlText ("{0:0.######}" -f [double]$m.EstimatedCostUsd)) + '</td></tr>')
+        }
+        [void]$sb.AppendLine('</table></div>')
+    }
+
+    if ($null -ne $TaskSummary -and @($TaskSummary).Count -gt 0) {
+        [void]$sb.AppendLine('<div class="card"><h2>Task summary</h2><table>')
+        [void]$sb.AppendLine('<tr><th class="num">#</th><th>Type</th><th>Work</th><th>OK</th><th class="num">Ans</th><th>Judge</th><th>Judge Model</th><th>Compl</th><th class="num">Tokens</th><th class="num">Cost USD</th><th>Title</th></tr>')
+        foreach ($t in @($TaskSummary)) {
+            if ($null -eq $t) { continue }
+            $Comp = "OK"
+            if ($t.CompletenessWarning -eq $true) { $Comp = "WARN" }
+            [void]$sb.AppendLine('<tr><td class="num">' + (ConvertTo-HtmlText ([string]$t.TaskId)) + '</td><td>' + (ConvertTo-HtmlText ([string]$t.TaskType)) + '</td><td>' + (ConvertTo-HtmlText ([string]$t.WorkMode)) + '</td><td>' + (ConvertTo-HtmlText ([string]$t.Success)) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$t.AnswerCount)) + '</td><td>' + (ConvertTo-HtmlText ([string]$t.JudgeMode)) + '</td><td>' + (ConvertTo-HtmlText ([string]$t.JudgeModelUsed)) + '</td><td>' + (ConvertTo-HtmlText $Comp) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$t.TotalTokens)) + '</td><td class="num">$' + (ConvertTo-HtmlText ("{0:0.######}" -f [double]$t.EstimatedCostUsd)) + '</td><td>' + (ConvertTo-HtmlText ([string]$t.TaskTitle)) + '</td></tr>')
+        }
+        [void]$sb.AppendLine('</table></div>')
+    }
+
+    if ($null -ne $Timing) {
+        [void]$sb.AppendLine('<div class="card"><h2>Timing summary</h2><table>')
+        foreach ($p in $Timing.PSObject.Properties) {
+            if ($p.Name -eq "CostByRole" -or $p.Name -eq "CostByModel") { continue }
+            [void]$sb.AppendLine('<tr><td>' + (ConvertTo-HtmlText ([string]$p.Name)) + '</td><td class="num">' + (ConvertTo-HtmlText ([string]$p.Value)) + '</td></tr>')
+        }
+        [void]$sb.AppendLine('</table></div>')
+    }
+
+    if ($null -ne $CostWarn -and @($CostWarn).Count -gt 0) {
+        [void]$sb.AppendLine('<div class="card"><h2>Cost warnings</h2><ul class="recs">')
+        foreach ($w in @($CostWarn)) {
+            if ($null -eq $w) { continue }
+            [void]$sb.AppendLine('<li class="warn">' + (ConvertTo-HtmlText (([string]$w.Provider) + " | " + ([string]$w.Model) + " : " + ([string]$w.Reason))) + '</li>')
+        }
+        [void]$sb.AppendLine('</ul></div>')
+    }
+
+    $CompWarnText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "completeness_warnings.json")
+    if (-not [string]::IsNullOrWhiteSpace($CompWarnText)) {
+        [void]$sb.AppendLine('<div class="card"><h2>Completeness warnings (raw)</h2><pre>' + (ConvertTo-HtmlText $CompWarnText) + '</pre></div>')
+    }
+
+    [void]$sb.AppendLine('<div class="muted">Generated offline by Multi-LLM Prompter ' + (ConvertTo-HtmlText $ToolVersion) + ' from ' + (ConvertTo-HtmlText $RunFolderPath) + '</div>')
+    [void]$sb.AppendLine('</div></body></html>')
+
+    $OutPath = Join-Path $RunFolderPath "cost_report.html"
+    $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($OutPath, $sb.ToString(), $Utf8NoBom)
+    return $OutPath
+}
+
 function Complete-GuiRun {
     param([int]$ExitCode)
 
@@ -8089,7 +8272,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.66" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.67" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -8107,8 +8290,10 @@ $GuiXamlTemplate = @"
                         Padding="12,0,0,0" ToolTip="Copy the final answer to the clipboard."/>
                 <Button Name="BtnImproved" Style="{StaticResource RailButton}" Content="&#x1F4DD;  Improved Prompt" Height="30" Margin="0,0,0,4"
                         IsEnabled="False" Padding="12,0,0,0" ToolTip="Open the improved version of your prompt produced by the judge (available after a run)."/>
-                <Button Name="BtnOpenFolder" Style="{StaticResource RailButton}" Content="&#x1F4C1;  Open Folder" Height="30"
+                <Button Name="BtnOpenFolder" Style="{StaticResource RailButton}" Content="&#x1F4C1;  Open Folder" Height="30" Margin="0,0,0,4"
                         Padding="12,0,0,0" ToolTip="Open the run output folder in Explorer."/>
+                <Button Name="BtnHtmlReport" Style="{StaticResource RailButton}" Content="&#x1F310;  HTML Report" Height="30"
+                        Padding="12,0,0,0" ToolTip="Build a shareable HTML cost report for this run and open it in your browser."/>
               </StackPanel>
             </Border>
 
@@ -8754,6 +8939,7 @@ $Script:Ctl_ChkCheapJudge = $GuiWindow.FindName("ChkCheapJudge")
 $Script:Ctl_ChkRunVerifier = $GuiWindow.FindName("ChkRunVerifier")
 $Script:Ctl_CheapJudgeCombo = $GuiWindow.FindName("CheapJudgeCombo")
 $Script:Ctl_BtnOpenFolder = $GuiWindow.FindName("BtnOpenFolder")
+$Script:Ctl_BtnHtmlReport = $GuiWindow.FindName("BtnHtmlReport")
 $Script:Ctl_StatusText   = $GuiWindow.FindName("StatusText")
 $Script:Ctl_PbTasks      = $GuiWindow.FindName("PbTasks")
 $Script:Ctl_LblTasksDone = $GuiWindow.FindName("LblTasksDone")
@@ -9809,6 +9995,31 @@ $Script:Ctl_BtnOpenFolder.Add_Click({
     else {
         Add-GuiLog -Tag "WARN" -Message ("Folder not found: " + $FolderToOpen)
     }
+})
+
+$Script:Ctl_BtnHtmlReport.Add_Click({
+    $FolderToReport = $Script:CurrentRunFolder
+    if ([string]::IsNullOrWhiteSpace($FolderToReport) -or (-not (Test-Path -LiteralPath $FolderToReport))) {
+        Add-GuiLog -Tag "WARN" -Message "No run folder yet. Run a prompt, or open a recent run, first."
+        return
+    }
+
+    $ReportPath = $null
+    try {
+        $ReportPath = New-RunHtmlReport -RunFolderPath $FolderToReport -ToolVersion $ToolVersion
+    }
+    catch {
+        Add-GuiLog -Tag "ERROR" -Message ("Failed to build HTML report: " + $_.Exception.Message)
+        return
+    }
+
+    if ([string]::IsNullOrWhiteSpace($ReportPath) -or (-not (Test-Path -LiteralPath $ReportPath))) {
+        Add-GuiLog -Tag "WARN" -Message "No cost or task data to report yet for this run."
+        return
+    }
+
+    Start-Process $ReportPath
+    Add-GuiLog -Tag "OK" -Message ("HTML report written and opened in your browser: " + $ReportPath)
 })
 
 $Script:Ctl_ConfigMenu = New-Object System.Windows.Controls.ContextMenu
