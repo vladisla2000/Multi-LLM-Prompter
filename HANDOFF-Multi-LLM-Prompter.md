@@ -4,8 +4,8 @@
 > This English file is the source of truth; keep both in sync on changes.
 
 Last updated: 2026-06-17
-Current version: **v0.8.74** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_74.ps1` (~10,420 lines, ~430 KB).
+Current version: **v0.8.75** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_75.ps1` (~10,430 lines, ~430 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -30,7 +30,8 @@ estimates, sidebar + inspector rail, menus, personas, clarification gate, cost b
    report; verifier cost folded into totals; predicted-vs-actual cost saved + surfaced)
 -> v0.8.72 (clear Estimated-vs-Actual cost rows; header-checkbox clip fix; author "VladSp + AI")
 -> v0.8.73 (review fixes: rail "Pop-out Answer"; Improved Prompt no longer a dead end; plain preset labels)
--> v0.8.74 (real fix for the clipped Tasks select-all header checkbox: ColumnHeaderHeight=36 + 16x16 box).
+-> v0.8.74 (real fix for the clipped Tasks select-all header checkbox: ColumnHeaderHeight=36 + 16x16 box)
+-> v0.8.75 (header checkbox: wrap in an explicit-height Grid - the header presenter ignored center alignment).
 
 ## THIS SESSION (2026-06-17) - READ FIRST
 
@@ -42,7 +43,7 @@ This session resumed ownership at v0.8.71 and shipped **v0.8.72**.
 The docs/helper/harness work shipped via **PR #1** (`chore/docs-helper-harness`), which is now
 **MERGED to `main`** (merge commit `8fcde6d`). Everything since - v0.8.56 through v0.8.72 -
 is committed directly on `main` (one commit per version, per the versioning rule). Current `main`
-HEAD is the v0.8.74 commit.
+HEAD is the v0.8.75 commit.
 
 What shipped this session:
 - Re-synced all docs from the stale v0.8.2 handoff to the live code (this file, DEVELOPER.md, the
@@ -135,7 +136,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_74.ps1` - ~10,420 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_75.ps1` - ~10,430 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -445,6 +446,12 @@ UIReady; timer stopped + child killed on Closing.
   and cannot be clipped regardless of theme-template centering. XAML/layout only; frozen functions, judge
   contract, routing, cost math unchanged. (Lesson: a fixed header Height fights the header chrome; prefer
   ColumnHeaderHeight + an explicitly-sized control.)
+- v0.8.75: header checkbox was STILL slightly top-clipped after v0.8.74. An off-screen render confirmed
+  the default DataGridColumnHeader content presenter does NOT honor `VerticalContentAlignment=Center` for
+  a template-column header, so height alone couldn't fully fix it. Definitive fix: wrap the header CheckBox
+  in an explicit `<Grid Height="34" Width="40">` and center the 16x16 box inside that grid - centering now
+  happens in a normal panel we control, not the quirky header presenter. XAML/layout only; frozen
+  functions, judge contract, routing, cost math unchanged.
 
 ---
 

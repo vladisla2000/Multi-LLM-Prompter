@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.74 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.75 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.74:
+# Changes through v0.8.75:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -558,6 +558,14 @@
 #       clean, well-defined footprint. Now a 16px box sits inside a 36px header and cannot be clipped
 #       regardless of theme-template centering. XAML/layout only; no logic or frozen-function change.
 #
+#  111. v0.8.75: header checkbox STILL slightly top-clipped after v0.8.74 - confirmed the default
+#       DataGridColumnHeader content presenter does NOT honor VerticalContentAlignment=Center for the
+#       template-column header (an off-screen render showed the header content not laid out as centered).
+#       Definitive fix: wrap the header CheckBox in an explicit <Grid Height="34" Width="40"> and center
+#       the 16x16 box inside THAT grid, so centering happens in a normal panel under our control rather
+#       than the quirky header presenter. The box now sits mid-header and cannot be clipped. XAML/layout
+#       only; frozen functions, judge contract, routing, cost math unchanged.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -572,7 +580,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.74"
+$ToolVersion = "v0.8.75"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -8417,7 +8425,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.74" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.75" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
           <TextBlock Text="by VladSp + AI" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
@@ -8848,9 +8856,14 @@ $GuiXamlTemplate = @"
               <DataGrid.Columns>
                 <DataGridTemplateColumn Width="48">
                   <DataGridTemplateColumn.Header>
-                    <CheckBox Name="ChkTaskRunAll" IsThreeState="True" Focusable="False"
-                              Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center"
-                              ToolTip="Enable or disable all detected tasks"/>
+                    <!-- Wrap in an explicit-height Grid so the box is centered in a known region; the
+                         default DataGridColumnHeader presenter does not reliably honor center alignment,
+                         which left the box top-clipped even at ColumnHeaderHeight=36 (v0.8.75). -->
+                    <Grid Height="34" Width="40">
+                      <CheckBox Name="ChkTaskRunAll" IsThreeState="True" Focusable="False"
+                                Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                ToolTip="Enable or disable all detected tasks"/>
+                    </Grid>
                   </DataGridTemplateColumn.Header>
                   <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate>
