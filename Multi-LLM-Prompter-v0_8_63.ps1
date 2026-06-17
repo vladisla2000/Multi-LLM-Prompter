@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.62 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.63 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.62:
+# Changes through v0.8.63:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -429,6 +429,17 @@
 #       GUI->prompt contract is unchanged; only the dialog layout and the (now richer, Q-paired) text
 #       differ. Pure GUI change; frozen functions, judge contract, routing, cost math untouched.
 #
+#   99. v0.8.63: Cost by Role, Cost by Model, and the per-task Task Summary are now shown directly in
+#       the GUI's "Cost & Metrics" tab (renamed from "Metrics"), not only inside the Full Answer window.
+#       The Metrics tab previously dumped Cost by Model / Cost by Role as a hard-to-read vertical
+#       key:value list and had NO task summary at all. New Format-AlignedTable helper renders each as a
+#       monospace, column-aligned table (Consolas + NoWrap + horizontal scroll in MetricsBox), and a new
+#       TASK SUMMARY table (Id/Type/Work/OK/Ans/Judge/Judge Model/Compl/Tokens/Cost/Title, Title capped
+#       at 48 chars) reads task_results_summary.json independently of the cost files so it shows even if
+#       a cost summary is missing. Read-only rendering only: it consumes the SAME run-folder JSON the
+#       child already writes (cost_summary_by_role.json / cost_summary_by_model.json /
+#       task_results_summary.json); no new files, no pipeline/child/judge/routing/cost-math change.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -443,7 +454,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.62"
+$ToolVersion = "v0.8.63"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -6666,6 +6677,51 @@ function Update-TasksGridFromSummary {
     return $true
 }
 
+function Format-AlignedTable {
+    # Builds a monospace, column-aligned text table (header + separator + rows). The Metrics
+    # TextBox is Consolas + NoWrap + horizontal scroll, so aligned columns line up cleanly.
+    # $Rows is an array of string arrays (one per row), each the same length as $Headers.
+    param(
+        [string[]]$Headers,
+        [object[]]$Rows,
+        [bool[]]$RightAlign
+    )
+
+    $ColCount = @($Headers).Count
+    $Widths = New-Object 'int[]' $ColCount
+    for ($c = 0; $c -lt $ColCount; $c++) { $Widths[$c] = ([string]$Headers[$c]).Length }
+    foreach ($Row in @($Rows)) {
+        for ($c = 0; $c -lt $ColCount; $c++) {
+            $Cell = [string]$Row[$c]
+            if ($Cell.Length -gt $Widths[$c]) { $Widths[$c] = $Cell.Length }
+        }
+    }
+
+    $Out = @()
+    $HeaderCells = @()
+    $SepCells = @()
+    for ($c = 0; $c -lt $ColCount; $c++) {
+        $H = [string]$Headers[$c]
+        if ($RightAlign[$c] -eq $true) { $HeaderCells += $H.PadLeft($Widths[$c]) }
+        else { $HeaderCells += $H.PadRight($Widths[$c]) }
+        $SepCells += ("-" * $Widths[$c])
+    }
+    $Out += ($HeaderCells -join "  ")
+    $Out += ($SepCells -join "  ")
+
+    foreach ($Row in @($Rows)) {
+        $RowCells = @()
+        for ($c = 0; $c -lt $ColCount; $c++) {
+            $Cell = [string]$Row[$c]
+            if ($RightAlign[$c] -eq $true) { $RowCells += $Cell.PadLeft($Widths[$c]) }
+            else { $RowCells += $Cell.PadRight($Widths[$c]) }
+        }
+        $Out += ($RowCells -join "  ")
+    }
+
+    return $Out
+}
+
 function Update-MetricsTabFromRun {
     param([string]$RunFolderPath)
 
@@ -6713,18 +6769,23 @@ function Update-MetricsTabFromRun {
 
         if ($null -ne $CostModel) {
             $Lines += "COST BY MODEL"
-            $Lines += "-------------"
+            $Lines += "============="
+            $ModelRows = @()
             foreach ($Item in @($CostModel)) {
-                $Lines += ("{0,-28} : {1}" -f "Provider", $Item.Provider)
-                $Lines += ("{0,-28} : {1}" -f "Model", $Item.Model)
-                $Lines += ("{0,-28} : {1}" -f "Roles", $Item.Roles)
-                $Lines += ("{0,-28} : {1}" -f "Requests", $Item.RequestCount)
-                $Lines += ("{0,-28} : {1}" -f "InputTokens", $Item.InputTokens)
-                $Lines += ("{0,-28} : {1}" -f "OutputTokens", $Item.OutputTokens)
-                $Lines += ("{0,-28} : {1}" -f "TotalTokens", $Item.TotalTokens)
-                $Lines += ("{0,-28} : {1}" -f "EstimatedCostUsd", $Item.EstimatedCostUsd)
-                $Lines += ""
+                $ModelRows += , @(
+                    [string]$Item.Provider,
+                    [string]$Item.Model,
+                    [string]$Item.Roles,
+                    [string]$Item.RequestCount,
+                    [string]$Item.DurationSeconds,
+                    [string]$Item.InputTokens,
+                    [string]$Item.OutputTokens,
+                    [string]$Item.TotalTokens,
+                    ("$" + [string]$Item.EstimatedCostUsd)
+                )
             }
+            $Lines += (Format-AlignedTable -Headers @("Provider", "Model", "Roles", "Reqs", "Seconds", "Input", "Output", "Total", "Cost USD") -Rows $ModelRows -RightAlign @($false, $false, $false, $true, $true, $true, $true, $true, $true))
+            $Lines += ""
         }
     }
 
@@ -6769,13 +6830,64 @@ function Update-MetricsTabFromRun {
 
         if ($null -ne $Cost) {
             $Lines += "COST BY ROLE"
-            $Lines += "------------"
+            $Lines += "============"
+            $RoleRows = @()
             foreach ($Item in @($Cost)) {
-                foreach ($Prop in $Item.PSObject.Properties) {
-                    $Lines += ("{0,-28} : {1}" -f $Prop.Name, $Prop.Value)
-                }
-                $Lines += ""
+                $RoleRows += , @(
+                    [string]$Item.Role,
+                    [string]$Item.RequestCount,
+                    [string]$Item.DurationSeconds,
+                    [string]$Item.InputTokens,
+                    [string]$Item.OutputTokens,
+                    [string]$Item.TotalTokens,
+                    ("$" + [string]$Item.EstimatedCostUsd)
+                )
             }
+            $Lines += (Format-AlignedTable -Headers @("Role", "Reqs", "Seconds", "Input", "Output", "Total", "Cost USD") -Rows $RoleRows -RightAlign @($false, $true, $true, $true, $true, $true, $true))
+            $Lines += ""
+        }
+    }
+
+    # Task summary table (v0.8.63): the same per-task summary the Full Answer window shows,
+    # now surfaced in the GUI Metrics tab too. Independent of the cost files above so it shows
+    # even if a cost summary is missing.
+    $TaskSummaryPath = Join-Path $RunFolderPath "task_results_summary.json"
+    $TaskSummaryText = Get-FileTextSafe -Path $TaskSummaryPath
+
+    if (-not [string]::IsNullOrWhiteSpace($TaskSummaryText)) {
+        $TaskSummary = $null
+        try {
+            $TaskSummary = $TaskSummaryText | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            $TaskSummary = $null
+        }
+
+        if ($null -ne $TaskSummary) {
+            $TaskRows = @()
+            foreach ($Item in @($TaskSummary)) {
+                $Comp = "OK"
+                if ($Item.CompletenessWarning -eq $true) { $Comp = "WARN" }
+                $Title = [string]$Item.TaskTitle
+                if ($Title.Length -gt 48) { $Title = $Title.Substring(0, 45) + "..." }
+                $TaskRows += , @(
+                    [string]$Item.TaskId,
+                    [string]$Item.TaskType,
+                    [string]$Item.WorkMode,
+                    [string]$Item.Success,
+                    [string]$Item.AnswerCount,
+                    [string]$Item.JudgeMode,
+                    [string]$Item.JudgeModelUsed,
+                    $Comp,
+                    [string]$Item.TotalTokens,
+                    ("$" + [string]$Item.EstimatedCostUsd),
+                    $Title
+                )
+            }
+            $Lines += "TASK SUMMARY"
+            $Lines += "============"
+            $Lines += (Format-AlignedTable -Headers @("Id", "Type", "Work", "OK", "Ans", "Judge", "Judge Model", "Compl", "Tokens", "Cost USD", "Title") -Rows $TaskRows -RightAlign @($true, $false, $false, $false, $true, $false, $false, $false, $true, $true, $false))
+            $Lines += ""
         }
     }
 
@@ -7772,7 +7884,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.62" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.63" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -8291,7 +8403,7 @@ $GuiXamlTemplate = @"
           </Grid>
         </Grid>
       </TabItem>
-      <TabItem Header="Metrics">
+      <TabItem Header="Cost &amp; Metrics">
         <TextBox Name="MetricsBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                  FontFamily="Consolas" FontSize="12" Background="White"/>
