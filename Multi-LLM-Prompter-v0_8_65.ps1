@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.64 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.65 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.64:
+# Changes through v0.8.65:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -453,6 +453,18 @@
 #       pipeline/child/judge/routing/cost-math change. A live-model recommender could be added later as an
 #       off-by-default toggle, but the offline heuristics need no keys and are validated here.
 #
+#  101. v0.8.65: Left action rail polish. (a) Buttons reordered to the workflow order Detect Tasks ->
+#       Run -> Stop (Detect is now first; Run stays the visually primary green). (b) "Run Folder" button
+#       relabeled "Open Folder". (c) Every button now has a clear hover state and a hand cursor so it
+#       reads as clickable: a new implicit Button template + a keyed "RailButton" style add an overlay
+#       that lightens on hover and darkens on press (works on any base colour - green Run, red Stop,
+#       dark nav chips). Previously the rail buttons shared the rail's own colour with a 0px border, so
+#       they looked like plain text and the old hover only recoloured an invisible border. (d) Rail
+#       buttons are now chips (distinct fill + rounded corners) grouped inside bordered frames
+#       (Primary actions / Results / Recent runs). Pure XAML + Window.Resources styling; all button
+#       Names/handlers unchanged (BtnRun/BtnStop/BtnDetect/BtnOpenFolder/BtnSideRecent1-4 etc.), so
+#       Update-RunButtonState / Set-GuiBusy / Open-PastRun keep working. No logic/judge/routing/cost change.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -467,7 +479,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.64"
+$ToolVersion = "v0.8.65"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -7942,27 +7954,72 @@ $GuiXamlTemplate = @"
         WindowStartupLocation="CenterScreen" Background="#F3F3F3"
         FontFamily="Segoe UI" FontSize="11">
   <Window.Resources>
+    <!-- Light buttons (dialogs, tabs, header). v0.8.65: clear hover + hand cursor. An overlay border
+         lightens on hover and darkens on press, so the button reads as clickable on any base color. -->
     <Style TargetType="Button">
       <Setter Property="Background" Value="#FFFFFF"/>
       <Setter Property="BorderBrush" Value="#9AA7B4"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Foreground" Value="#1B2545"/>
       <Setter Property="Padding" Value="6,2"/>
+      <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="SnapsToDevicePixels" Value="True"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" SnapsToDevicePixels="True">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
-            </Border>
+            <Grid>
+              <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" SnapsToDevicePixels="True"/>
+              <Border x:Name="Ov" Background="Transparent" CornerRadius="3"/>
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+            </Grid>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Bd" Property="BorderBrush" Value="#0078D7"/>
+                <Setter TargetName="Ov" Property="Background" Value="#1A0078D7"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Ov" Property="Background" Value="#22000000"/>
               </Trigger>
               <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="Bd" Property="Background" Value="#E6E6E6"/>
                 <Setter TargetName="Bd" Property="BorderBrush" Value="#BFC7CF"/>
                 <Setter Property="Foreground" Value="#8A8A8A"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Rail buttons (dark side rail). v0.8.65: chip look so each reads as a button, with an obvious
+         hover lighten + press darken + hand cursor. Each button keeps its own Background (Run green,
+         Stop red, etc.); the white/black overlay makes the hover visible on any of them. -->
+    <Style x:Key="RailButton" TargetType="Button">
+      <Setter Property="Background" Value="#15406B"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="6,2"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="SnapsToDevicePixels" Value="True"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid>
+              <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" SnapsToDevicePixels="True"/>
+              <Border x:Name="Ov" Background="Transparent" CornerRadius="4"/>
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Ov" Property="Background" Value="#28FFFFFF"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Ov" Property="Background" Value="#28000000"/>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="Bd" Property="Background" Value="#13314D"/>
+                <Setter Property="Foreground" Value="#5E7C99"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -8019,74 +8076,64 @@ $GuiXamlTemplate = @"
       </DockPanel>
     </Border>
 
-    <!-- LEFT ACTION RAIL (v0.8.61: actions moved here from the old bottom bar; jump-nav removed) -->
-    <Border DockPanel.Dock="Left" Width="192" Background="#0C2742" BorderBrush="#0B2545" BorderThickness="0,0,1,0">
+    <!-- LEFT ACTION RAIL (v0.8.65: Detect-first ordering, framed groups, chip buttons with clear hover) -->
+    <Border DockPanel.Dock="Left" Width="204" Background="#0C2742" BorderBrush="#0B2545" BorderThickness="0,0,1,0">
       <DockPanel LastChildFill="True">
-        <!-- Primary actions: pinned at the top so Run / Stop / Detect are always visible (v0.8.61) -->
-        <StackPanel DockPanel.Dock="Top" Margin="10,10,10,2">
-          <Button Name="BtnRun" Content="&#x25B6; Run" Height="40" Margin="0,0,0,5"
-                  Background="#0B6A0B" Foreground="White" FontWeight="SemiBold" BorderThickness="0"
-                  HorizontalContentAlignment="Center"
-                  ToolTip="Run the selected tasks. Answer models run in parallel per task, then the Judge compares and synthesizes."/>
-          <Button Name="BtnStop" Content="&#x25A0; Stop" Height="30" Margin="0,0,0,5"
-                  Background="#A4262C" Foreground="White" BorderThickness="0" IsEnabled="False"
-                  HorizontalContentAlignment="Center"
-                  ToolTip="Stop the current run (kills the hidden child process)."/>
-          <Button Name="BtnDetect" Content="&#x1F50D;  Detect Tasks" Height="32"
-                  Background="#1B4A86" Foreground="White" BorderThickness="0"
-                  HorizontalContentAlignment="Left" Padding="14,0,0,0"
-                  ToolTip="Split the prompt into tasks and preview them in the Tasks tab. This is the exact same split the run will use."/>
-        </StackPanel>
+        <!-- Primary actions frame: Detect -> Run -> Stop (workflow order), pinned at the top -->
+        <Border DockPanel.Dock="Top" Margin="10,10,10,4" Background="#0A2138" BorderBrush="#1E4D7A" BorderThickness="1" CornerRadius="6" Padding="8,8">
+          <StackPanel>
+            <Button Name="BtnDetect" Style="{StaticResource RailButton}" Content="&#x1F50D;  Detect Tasks" Height="34" Margin="0,0,0,6"
+                    Background="#1B4A86" HorizontalContentAlignment="Center"
+                    ToolTip="Step 1: split the prompt into tasks and preview them in the Tasks tab. The same split the run uses."/>
+            <Button Name="BtnRun" Style="{StaticResource RailButton}" Content="&#x25B6; Run" Height="42" Margin="0,0,0,6"
+                    Background="#0B6A0B" FontWeight="SemiBold" FontSize="14" HorizontalContentAlignment="Center"
+                    ToolTip="Step 2: run the selected tasks. Answer models run in parallel per task, then the Judge compares and synthesizes."/>
+            <Button Name="BtnStop" Style="{StaticResource RailButton}" Content="&#x25A0; Stop" Height="32"
+                    Background="#A4262C" IsEnabled="False" HorizontalContentAlignment="Center"
+                    ToolTip="Stop the current run (kills the hidden child process)."/>
+          </StackPanel>
+        </Border>
 
-        <!-- Footer: settings + exit + app version, pinned at the bottom (v0.8.61) -->
-        <StackPanel DockPanel.Dock="Bottom" Margin="10,6,10,10">
-          <Border Background="#0B2545" Height="1" Margin="0,0,0,8"/>
+        <!-- Footer: settings + exit + app version, pinned at the bottom -->
+        <StackPanel DockPanel.Dock="Bottom" Margin="10,4,10,10">
           <DockPanel LastChildFill="True" Margin="0,0,0,8">
-            <Button Name="BtnExit" DockPanel.Dock="Right" Content="&#x2716; Exit" Width="62" Height="30"
-                    Background="#0C2742" Foreground="#9DC3E6" BorderThickness="0" Margin="6,0,0,0"
+            <Button Name="BtnExit" Style="{StaticResource RailButton}" DockPanel.Dock="Right" Content="&#x2716; Exit" Width="64" Height="30"
+                    Background="#123150" HorizontalContentAlignment="Center" Margin="6,0,0,0"
                     ToolTip="Close Multi-LLM Prompter."/>
-            <Button Name="BtnSideSettings" Content="&#x2699;  Settings" Height="30"
-                    Background="#0C2742" Foreground="White" BorderThickness="0"
-                    HorizontalContentAlignment="Left" Padding="12,0,0,0"
+            <Button Name="BtnSideSettings" Style="{StaticResource RailButton}" Content="&#x2699;  Settings" Height="30"
+                    Background="#123150" Padding="12,0,0,0"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.64" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.65" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Margin="10,8,10,8">
-            <Button Name="BtnSideNewRun" Content="+  New Run" Height="32" Margin="0,0,0,2"
-                    Background="#0C2742" Foreground="White" BorderThickness="0"
-                    HorizontalContentAlignment="Left" Padding="14,0,0,0"
+            <Button Name="BtnSideNewRun" Style="{StaticResource RailButton}" Content="+  New Run" Height="32" Margin="0,0,0,8"
+                    Padding="14,0,0,0"
                     ToolTip="Clear the current draft and start a new run."/>
 
-            <Border Background="#0B2545" Height="1" Margin="0,10,0,8"/>
-            <TextBlock Text="Results" Foreground="#9DC3E6" FontSize="11" Margin="2,0,0,6"/>
+            <Border Background="#0A2138" BorderBrush="#1E4D7A" BorderThickness="1" CornerRadius="6" Padding="8,8" Margin="0,0,0,8">
+              <StackPanel>
+                <TextBlock Text="RESULTS" Foreground="#7FA8CF" FontSize="10" FontWeight="SemiBold" Margin="2,0,0,6"/>
+                <Button Name="BtnCopyFinal" Style="{StaticResource RailButton}" Content="&#x1F4C4;  Full Answer" Height="30" Margin="0,0,0,4"
+                        Padding="12,0,0,0" ToolTip="Open the final answer in a separate window."/>
+                <Button Name="BtnCopyQuick" Style="{StaticResource RailButton}" Content="&#x1F4CB;  Copy" Height="30" Margin="0,0,0,4"
+                        Padding="12,0,0,0" ToolTip="Copy the final answer to the clipboard."/>
+                <Button Name="BtnImproved" Style="{StaticResource RailButton}" Content="&#x1F4DD;  Improved Prompt" Height="30" Margin="0,0,0,4"
+                        IsEnabled="False" Padding="12,0,0,0" ToolTip="Open the improved version of your prompt produced by the judge (available after a run)."/>
+                <Button Name="BtnOpenFolder" Style="{StaticResource RailButton}" Content="&#x1F4C1;  Open Folder" Height="30"
+                        Padding="12,0,0,0" ToolTip="Open the run output folder in Explorer."/>
+              </StackPanel>
+            </Border>
 
-            <Button Name="BtnCopyFinal" Content="&#x1F4C4;  Full Answer" Height="30" Margin="0,0,0,2"
-                    Background="#0C2742" Foreground="White" BorderThickness="0"
-                    HorizontalContentAlignment="Left" Padding="14,0,0,0"
-                    ToolTip="Open the final answer in a separate window."/>
-            <Button Name="BtnCopyQuick" Content="&#x1F4CB;  Copy" Height="30" Margin="0,0,0,2"
-                    Background="#0C2742" Foreground="White" BorderThickness="0"
-                    HorizontalContentAlignment="Left" Padding="14,0,0,0"
-                    ToolTip="Copy the final answer to the clipboard."/>
-            <Button Name="BtnImproved" Content="&#x1F4DD;  Improved Prompt" Height="30" Margin="0,0,0,2"
-                    Background="#0C2742" Foreground="White" BorderThickness="0" IsEnabled="False"
-                    HorizontalContentAlignment="Left" Padding="14,0,0,0"
-                    ToolTip="Open the improved version of your prompt produced by the judge (available after a run)."/>
-            <Button Name="BtnOpenFolder" Content="&#x1F4C1;  Run Folder" Height="30" Margin="0,0,0,2"
-                    Background="#0C2742" Foreground="White" BorderThickness="0"
-                    HorizontalContentAlignment="Left" Padding="14,0,0,0"
-                    ToolTip="Open the run output folder in Explorer."/>
-
-            <Border Background="#0B2545" Height="1" Margin="0,10,0,8"/>
-            <TextBlock Text="Recent runs" Foreground="#9DC3E6" FontSize="11" Margin="2,0,0,6"/>
-
-            <Button Name="BtnSideRecent1" Height="30" Margin="0,0,0,3" Background="#0C2742" Foreground="White"
-                    BorderThickness="0" HorizontalContentAlignment="Stretch" Padding="6,0" IsEnabled="False"
-                    ToolTip="Load this run's results">
+            <Border Background="#0A2138" BorderBrush="#1E4D7A" BorderThickness="1" CornerRadius="6" Padding="8,8">
+              <StackPanel>
+                <TextBlock Text="RECENT RUNS" Foreground="#7FA8CF" FontSize="10" FontWeight="SemiBold" Margin="2,0,0,6"/>
+                <Button Name="BtnSideRecent1" Style="{StaticResource RailButton}" Height="30" Margin="0,0,0,4" IsEnabled="False"
+                        HorizontalContentAlignment="Stretch" Padding="6,0"
+                        ToolTip="Load this run's results">
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="14"/>
@@ -8098,9 +8145,9 @@ $GuiXamlTemplate = @"
                 <TextBlock Grid.Column="2" Name="TxtSideRecent1Time" Text="" Foreground="#9DC3E6" FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"/>
               </Grid>
             </Button>
-            <Button Name="BtnSideRecent2" Height="30" Margin="0,0,0,3" Background="#0C2742" Foreground="White"
-                    BorderThickness="0" HorizontalContentAlignment="Stretch" Padding="6,0" IsEnabled="False"
-                    ToolTip="Load this run's results">
+                <Button Name="BtnSideRecent2" Style="{StaticResource RailButton}" Height="30" Margin="0,0,0,4" IsEnabled="False"
+                        HorizontalContentAlignment="Stretch" Padding="6,0"
+                        ToolTip="Load this run's results">
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="14"/>
@@ -8112,9 +8159,9 @@ $GuiXamlTemplate = @"
                 <TextBlock Grid.Column="2" Name="TxtSideRecent2Time" Text="" Foreground="#9DC3E6" FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"/>
               </Grid>
             </Button>
-            <Button Name="BtnSideRecent3" Height="30" Margin="0,0,0,3" Background="#0C2742" Foreground="White"
-                    BorderThickness="0" HorizontalContentAlignment="Stretch" Padding="6,0" IsEnabled="False"
-                    ToolTip="Load this run's results">
+                <Button Name="BtnSideRecent3" Style="{StaticResource RailButton}" Height="30" Margin="0,0,0,4" IsEnabled="False"
+                        HorizontalContentAlignment="Stretch" Padding="6,0"
+                        ToolTip="Load this run's results">
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="14"/>
@@ -8126,9 +8173,9 @@ $GuiXamlTemplate = @"
                 <TextBlock Grid.Column="2" Name="TxtSideRecent3Time" Text="" Foreground="#9DC3E6" FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"/>
               </Grid>
             </Button>
-            <Button Name="BtnSideRecent4" Height="30" Margin="0,0,0,3" Background="#0C2742" Foreground="White"
-                    BorderThickness="0" HorizontalContentAlignment="Stretch" Padding="6,0" IsEnabled="False"
-                    ToolTip="Load this run's results">
+                <Button Name="BtnSideRecent4" Style="{StaticResource RailButton}" Height="30" Margin="0,0,0,4" IsEnabled="False"
+                        HorizontalContentAlignment="Stretch" Padding="6,0"
+                        ToolTip="Load this run's results">
               <Grid>
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="14"/>
@@ -8139,7 +8186,9 @@ $GuiXamlTemplate = @"
                 <TextBlock Grid.Column="1" Name="TxtSideRecent4Name" Text="" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="2" Name="TxtSideRecent4Time" Text="" Foreground="#9DC3E6" FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"/>
               </Grid>
-            </Button>
+                </Button>
+              </StackPanel>
+            </Border>
           </StackPanel>
         </ScrollViewer>
       </DockPanel>
