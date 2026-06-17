@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.70 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.71 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.70:
+# Changes through v0.8.71:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -516,6 +516,15 @@
 #       "Copy Full Answer" (tooltip updated). GUI/offline only; no pipeline/child/judge/routing/cost-math
 #       change (Get-EstimatedCostUsd untouched; the prediction is the existing GUI estimate, just saved).
 #
+#  107. v0.8.71: Timing Summary is now a decorated grid too. The Cost & Metrics tab already rendered Cost
+#       by Role / Cost by Model / Task Summary as DataGrids (v0.8.66); the timing summary was still a
+#       monospace text dump. Added a TimingGrid (Metric/Value, shared GridHeader styling) right after the
+#       recommendations card, populated from timing_summary.json (excluding the nested CostByRole/
+#       CostByModel arrays, which have their own grids). The bottom text box is now "Warnings" only (cost
+#       + completeness warnings). So all four tables - Timing Summary, Cost by Role, Cost by Model, Task
+#       Summary - are GUI grids, not only text in the Full Answer. Clear-MetricsTab resets the new grid.
+#       GUI/read-only over the same run-folder JSON; no pipeline/child/judge/routing/cost-math change.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -530,7 +539,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.70"
+$ToolVersion = "v0.8.71"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -6996,6 +7005,7 @@ function Clear-MetricsTab {
     # and the timing/warnings text box) when starting or clearing a run (v0.8.66).
     if ($null -ne $Script:Ctl_MetricsRecBox)   { $Script:Ctl_MetricsRecBox.Text = "Run a prompt to see cost recommendations." }
     if ($null -ne $Script:Ctl_MetricsBox)      { $Script:Ctl_MetricsBox.Text = "" }
+    if ($null -ne $Script:Ctl_TimingGrid)      { $Script:Ctl_TimingGrid.ItemsSource = $null }
     if ($null -ne $Script:Ctl_CostRoleGrid)    { $Script:Ctl_CostRoleGrid.ItemsSource = $null }
     if ($null -ne $Script:Ctl_CostModelGrid)   { $Script:Ctl_CostModelGrid.ItemsSource = $null }
     if ($null -ne $Script:Ctl_MetricsTaskGrid) { $Script:Ctl_MetricsTaskGrid.ItemsSource = $null }
@@ -7097,24 +7107,26 @@ function Update-MetricsTabFromRun {
         $Script:Ctl_MetricsTaskGrid.ItemsSource = $TaskRows
     }
 
-    # --- Timing + warnings (text) ---
-    $Lines = @()
-
+    # --- Timing summary grid (v0.8.71): name/value rows, excluding the nested CostByRole/CostByModel
+    # arrays (those have their own grids above). ---
     $Timing = $null
     $TimingText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "timing_summary.json")
     if (-not [string]::IsNullOrWhiteSpace($TimingText)) {
         try { $Timing = $TimingText | ConvertFrom-Json -ErrorAction Stop } catch { $Timing = $null }
     }
-    if ($null -ne $Timing) {
-        $Lines += "TIMING SUMMARY"
-        $Lines += "=============="
-        foreach ($Prop in $Timing.PSObject.Properties) {
-            if ($Prop.Name -ne "CostByRole" -and $Prop.Name -ne "CostByModel") {
-                $Lines += ("{0,-28} : {1}" -f $Prop.Name, $Prop.Value)
+    if ($null -ne $Script:Ctl_TimingGrid) {
+        $TimingRows = @()
+        if ($null -ne $Timing) {
+            foreach ($Prop in $Timing.PSObject.Properties) {
+                if ($Prop.Name -eq "CostByRole" -or $Prop.Name -eq "CostByModel") { continue }
+                $TimingRows += [PSCustomObject]@{ Metric = [string]$Prop.Name; Value = [string]$Prop.Value }
             }
         }
-        $Lines += ""
+        $Script:Ctl_TimingGrid.ItemsSource = $TimingRows
     }
+
+    # --- Warnings (text; cost warnings + completeness warnings only) ---
+    $Lines = @()
 
     $CostWarn = $null
     $CostWarnText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "cost_warnings.json")
@@ -8349,7 +8361,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.70" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.71" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -8878,6 +8890,17 @@ $GuiXamlTemplate = @"
               </StackPanel>
             </Border>
 
+            <TextBlock Text="Timing summary" FontWeight="SemiBold" FontSize="13" Foreground="#0B2545" Margin="0,0,0,4"/>
+            <DataGrid Name="TimingGrid" AutoGenerateColumns="False" AlternatingRowBackground="#F2F6FF" RowBackground="White"
+                      SelectionMode="Single" GridLinesVisibility="Horizontal" HeadersVisibility="Column" CanUserAddRows="False"
+                      IsReadOnly="True" FontFamily="Segoe UI" FontSize="11" MaxHeight="360" Margin="0,0,0,14"
+                      ColumnHeaderStyle="{StaticResource GridHeader}">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Metric" Binding="{Binding Metric}" Width="230"/>
+                <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="*"/>
+              </DataGrid.Columns>
+            </DataGrid>
+
             <TextBlock Text="Cost by role" FontWeight="SemiBold" FontSize="13" Foreground="#0B2545" Margin="0,0,0,4"/>
             <DataGrid Name="CostRoleGrid" AutoGenerateColumns="False" AlternatingRowBackground="#F2F6FF" RowBackground="White"
                       SelectionMode="Single" GridLinesVisibility="Horizontal" HeadersVisibility="Column" CanUserAddRows="False"
@@ -8932,10 +8955,10 @@ $GuiXamlTemplate = @"
               </DataGrid.Columns>
             </DataGrid>
 
-            <TextBlock Text="Timing and warnings" FontWeight="SemiBold" FontSize="13" Foreground="#0B2545" Margin="0,0,0,4"/>
+            <TextBlock Text="Warnings" FontWeight="SemiBold" FontSize="13" Foreground="#0B2545" Margin="0,0,0,4"/>
             <TextBox Name="MetricsBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap"
                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                     FontFamily="Consolas" FontSize="12" Background="White" Height="170"/>
+                     FontFamily="Consolas" FontSize="12" Background="White" Height="140"/>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
@@ -8993,6 +9016,7 @@ $Script:Ctl_FinalBox     = $GuiWindow.FindName("FinalBox")
 $Script:Ctl_TasksGrid    = $GuiWindow.FindName("TasksGrid")
 $Script:Ctl_MetricsBox   = $GuiWindow.FindName("MetricsBox")
 $Script:Ctl_MetricsRecBox   = $GuiWindow.FindName("MetricsRecBox")
+$Script:Ctl_TimingGrid      = $GuiWindow.FindName("TimingGrid")
 $Script:Ctl_CostRoleGrid    = $GuiWindow.FindName("CostRoleGrid")
 $Script:Ctl_CostModelGrid   = $GuiWindow.FindName("CostModelGrid")
 $Script:Ctl_MetricsTaskGrid = $GuiWindow.FindName("MetricsTaskGrid")
