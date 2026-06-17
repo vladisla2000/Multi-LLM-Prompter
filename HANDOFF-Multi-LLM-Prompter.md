@@ -4,8 +4,8 @@
 > This English file is the source of truth; keep both in sync on changes.
 
 Last updated: 2026-06-17
-Current version: **v0.8.73** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_73.ps1` (~10,410 lines, ~430 KB).
+Current version: **v0.8.74** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_74.ps1` (~10,420 lines, ~430 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -29,7 +29,8 @@ estimates, sidebar + inspector rail, menus, personas, clarification gate, cost b
    Task Summary + Timing as real DataGrids; offline cost recommendations; Detect-first rail; HTML cost
    report; verifier cost folded into totals; predicted-vs-actual cost saved + surfaced)
 -> v0.8.72 (clear Estimated-vs-Actual cost rows; header-checkbox clip fix; author "VladSp + AI")
--> v0.8.73 (review fixes: rail "Pop-out Answer"; Improved Prompt no longer a dead end; plain preset labels).
+-> v0.8.73 (review fixes: rail "Pop-out Answer"; Improved Prompt no longer a dead end; plain preset labels)
+-> v0.8.74 (real fix for the clipped Tasks select-all header checkbox: ColumnHeaderHeight=36 + 16x16 box).
 
 ## THIS SESSION (2026-06-17) - READ FIRST
 
@@ -41,7 +42,7 @@ This session resumed ownership at v0.8.71 and shipped **v0.8.72**.
 The docs/helper/harness work shipped via **PR #1** (`chore/docs-helper-harness`), which is now
 **MERGED to `main`** (merge commit `8fcde6d`). Everything since - v0.8.56 through v0.8.72 -
 is committed directly on `main` (one commit per version, per the versioning rule). Current `main`
-HEAD is the v0.8.73 commit.
+HEAD is the v0.8.74 commit.
 
 What shipped this session:
 - Re-synced all docs from the stale v0.8.2 handoff to the live code (this file, DEVELOPER.md, the
@@ -134,7 +135,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_73.ps1` - ~10,410 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_74.ps1` - ~10,420 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -436,6 +437,14 @@ UIReady; timer stopped + child killed on Closing.
   Validated: parse 0 errors; XAML-load smoke (renamed button + new preset labels confirmed); harness
   PASS=48/0. STILL OPEN from the review (need a live re-check on v0.8.73): #5 task-type display consistency
   and #3/#4/#6 (time/counter/token) - v0.8.69-72 reworked much of that, so confirm which still occur.
+- v0.8.74: the Tasks-grid select-all header checkbox was STILL clipped after the v0.8.72 attempt. Root
+  cause: the fixed `Height="30"` in the column-header style was too tight for the default
+  DataGridColumnHeader chrome, cropping the box even with `VerticalContentAlignment=Center`. Real fix:
+  removed the fixed Height setter, set the grid's `ColumnHeaderHeight="36"`, gave the header CheckBox an
+  explicit `16x16` size, and `HorizontalContentAlignment=Stretch` - so a 16px box sits in a 36px header
+  and cannot be clipped regardless of theme-template centering. XAML/layout only; frozen functions, judge
+  contract, routing, cost math unchanged. (Lesson: a fixed header Height fights the header chrome; prefer
+  ColumnHeaderHeight + an explicitly-sized control.)
 
 ---
 

@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.73 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.74 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.73:
+# Changes through v0.8.74:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -550,6 +550,14 @@
 #       CLI path are unchanged - only the GUI display strings + their three match sites moved together.
 #       GUI/display + one parser guard; frozen functions, judge contract, routing, cost math unchanged.
 #
+#  110. v0.8.74: Tasks-grid select-all header checkbox STILL clipped after v0.8.72 - the fixed header
+#       Height=30 in the column-header style was too tight for the default DataGridColumnHeader chrome,
+#       so the box was cropped even with VerticalContentAlignment=Center. Real fix: removed the fixed
+#       Height setter, set the grid's ColumnHeaderHeight=36 (generous), gave the header CheckBox an
+#       explicit 16x16 size, and added HorizontalContentAlignment=Stretch so the centered box has a
+#       clean, well-defined footprint. Now a 16px box sits inside a 36px header and cannot be clipped
+#       regardless of theme-template centering. XAML/layout only; no logic or frozen-function change.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -564,7 +572,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.73"
+$ToolVersion = "v0.8.74"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -8409,7 +8417,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.73" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.74" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
           <TextBlock Text="by VladSp + AI" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
@@ -8802,16 +8810,16 @@ $GuiXamlTemplate = @"
                       AlternatingRowBackground="#F7FAFF" RowBackground="White"
                       SelectionMode="Single" GridLinesVisibility="Horizontal"
                       HeadersVisibility="Column" CanUserAddRows="False"
-                      FontFamily="Segoe UI" FontSize="11"
+                      FontFamily="Segoe UI" FontSize="11" ColumnHeaderHeight="36"
                       ToolTip="Check the tasks to run. Double-click a completed task to open its final answer.">
               <DataGrid.ColumnHeaderStyle>
                 <Style TargetType="DataGridColumnHeader">
                   <Setter Property="Background" Value="#1F4788"/>
                   <Setter Property="Foreground" Value="White"/>
                   <Setter Property="FontWeight" Value="SemiBold"/>
-                  <Setter Property="Height" Value="30"/>
                   <Setter Property="Padding" Value="6,0"/>
                   <Setter Property="VerticalContentAlignment" Value="Center"/>
+                  <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                 </Style>
               </DataGrid.ColumnHeaderStyle>
               <DataGrid.RowStyle>
@@ -8841,7 +8849,7 @@ $GuiXamlTemplate = @"
                 <DataGridTemplateColumn Width="48">
                   <DataGridTemplateColumn.Header>
                     <CheckBox Name="ChkTaskRunAll" IsThreeState="True" Focusable="False"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center"
                               ToolTip="Enable or disable all detected tasks"/>
                   </DataGridTemplateColumn.Header>
                   <DataGridTemplateColumn.CellTemplate>
