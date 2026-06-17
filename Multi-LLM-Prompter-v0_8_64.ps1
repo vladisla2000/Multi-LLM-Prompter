@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.63 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.64 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.63:
+# Changes through v0.8.64:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -440,6 +440,19 @@
 #       child already writes (cost_summary_by_role.json / cost_summary_by_model.json /
 #       task_results_summary.json); no new files, no pipeline/child/judge/routing/cost-math change.
 #
+#  100. v0.8.64: Cost recommendations in the "Cost & Metrics" tab. A new offline Get-CostRecommendations
+#       runs pure heuristics (NO API call, no model) over this run's metric JSON plus the totals of up to
+#       10 recent prior runs, and prints an actionable "COST RECOMMENDATIONS" block at the top of the tab:
+#       this run vs the recent average (+/-25% flagged); judge share of cost when a Full/strong judge ran
+#       (>=60% -> suggest the review judge); any light-typed task (simple/technical/documentation/creative)
+#       that used the Full/strong judge (suggest Review work mode / review judge); a single task that is
+#       >=50% of the run (suggest dropping it); and models with no configured price (costs understated).
+#       Returns nothing for an empty/in-progress run folder so the section is hidden until there is data.
+#       Read-only over files the child already wrote (timing_summary / cost_summary_by_role /
+#       task_results_summary / cost_warnings + prior runs' timing_summary); no new output files, no
+#       pipeline/child/judge/routing/cost-math change. A live-model recommender could be added later as an
+#       off-by-default toggle, but the offline heuristics need no keys and are validated here.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -454,7 +467,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.63"
+$ToolVersion = "v0.8.64"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -6722,10 +6735,164 @@ function Format-AlignedTable {
     return $Out
 }
 
+function Get-CostRecommendations {
+    # Offline cost advice (v0.8.64): pure heuristics over THIS run's metric JSON plus the totals of
+    # recent prior runs. No API call - everything read from files the child already wrote. Returns @()
+    # when there is no cost/task data yet (in-progress or empty run folder) so the caller skips the section.
+    param([string]$RunFolderPath)
+
+    $Timing = $null
+    $TimingText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "timing_summary.json")
+    if (-not [string]::IsNullOrWhiteSpace($TimingText)) {
+        try { $Timing = $TimingText | ConvertFrom-Json -ErrorAction Stop } catch { $Timing = $null }
+    }
+
+    $CostRole = $null
+    $CostRoleText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "cost_summary_by_role.json")
+    if (-not [string]::IsNullOrWhiteSpace($CostRoleText)) {
+        try { $CostRole = $CostRoleText | ConvertFrom-Json -ErrorAction Stop } catch { $CostRole = $null }
+    }
+
+    $TaskSummary = $null
+    $TaskSummaryText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "task_results_summary.json")
+    if (-not [string]::IsNullOrWhiteSpace($TaskSummaryText)) {
+        try { $TaskSummary = $TaskSummaryText | ConvertFrom-Json -ErrorAction Stop } catch { $TaskSummary = $null }
+    }
+
+    $CostWarn = $null
+    $CostWarnText = Get-FileTextSafe -Path (Join-Path $RunFolderPath "cost_warnings.json")
+    if (-not [string]::IsNullOrWhiteSpace($CostWarnText)) {
+        try { $CostWarn = $CostWarnText | ConvertFrom-Json -ErrorAction Stop } catch { $CostWarn = $null }
+    }
+
+    if ($null -eq $CostRole -and $null -eq $TaskSummary -and $null -eq $Timing) {
+        return @()
+    }
+
+    $TotalCost = 0.0
+    if ($null -ne $Timing -and $null -ne $Timing.EstimatedCostUsd) {
+        $TotalCost = [double]$Timing.EstimatedCostUsd
+    }
+    elseif ($null -ne $CostRole) {
+        foreach ($r in @($CostRole)) { $TotalCost += [double]$r.EstimatedCostUsd }
+    }
+
+    $Recs = @()
+
+    # 1. Compare to the average of recent prior runs (reads each prior Run_* timing total).
+    $History = @()
+    try {
+        $RunRoot = Split-Path -Parent $RunFolderPath
+        $CurrentName = Split-Path -Leaf $RunFolderPath
+        if (-not [string]::IsNullOrWhiteSpace($RunRoot) -and (Test-Path -LiteralPath $RunRoot)) {
+            $PastRuns = @(Get-ChildItem -Path $RunRoot -Directory -Filter "Run_*" -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -ne $CurrentName } |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 10)
+            foreach ($PastRun in $PastRuns) {
+                $PastText = Get-FileTextSafe -Path (Join-Path $PastRun.FullName "timing_summary.json")
+                if (-not [string]::IsNullOrWhiteSpace($PastText)) {
+                    $PastTiming = $null
+                    try { $PastTiming = $PastText | ConvertFrom-Json -ErrorAction Stop } catch { $PastTiming = $null }
+                    if ($null -ne $PastTiming -and $null -ne $PastTiming.EstimatedCostUsd) {
+                        $History += [double]$PastTiming.EstimatedCostUsd
+                    }
+                }
+            }
+        }
+    }
+    catch {
+        $History = @()
+    }
+
+    if (@($History).Count -gt 0) {
+        $Avg = ($History | Measure-Object -Average).Average
+        $Recs += ("[i] This run $" + ("{0:0.######}" -f $TotalCost) + " vs average of the last " + @($History).Count + " run(s) $" + ("{0:0.######}" -f $Avg) + ".")
+        if ($Avg -gt 0) {
+            $Delta = (($TotalCost - $Avg) / $Avg) * 100.0
+            if ($Delta -ge 25) {
+                $Recs += ("[!] " + ("{0:0}" -f $Delta) + "% above your recent average - check the Task Summary for an outlier task or the strong judge on a light task.")
+            }
+            elseif ($Delta -le -25) {
+                $Recs += ("[ok] " + ("{0:0}" -f [Math]::Abs($Delta)) + "% below your recent average.")
+            }
+        }
+    }
+    else {
+        $Recs += "[i] No previous runs to compare against yet."
+    }
+
+    # 2. Judge share of cost - only worth flagging if a Full/strong judge actually ran.
+    $JudgeCost = 0.0
+    $AnswerCost = 0.0
+    foreach ($r in @($CostRole)) {
+        if ([string]$r.Role -eq "Judge") { $JudgeCost = [double]$r.EstimatedCostUsd }
+        elseif ([string]$r.Role -eq "Answer") { $AnswerCost = [double]$r.EstimatedCostUsd }
+    }
+    $RoleTotal = $JudgeCost + $AnswerCost
+    $AnyFullJudge = $false
+    foreach ($t in @($TaskSummary)) {
+        if ([string]$t.JudgeMode -match "Full") { $AnyFullJudge = $true }
+    }
+    if ($RoleTotal -gt 0 -and $AnyFullJudge) {
+        $JudgePct = ($JudgeCost / $RoleTotal) * 100.0
+        if ($JudgePct -ge 60) {
+            $Recs += ("[!] The Judge is " + ("{0:0}" -f $JudgePct) + "% of this run's cost. For light tasks, turn on 'Use review judge for light checks' - the strong judge is only needed for Script-mode Full comparisons.")
+        }
+    }
+
+    # 3. Strong judge on a light task type (a routing/override that can usually be downgraded).
+    $LightTypes = @("simple", "technical", "documentation", "creative")
+    $StrongOnLight = @()
+    foreach ($t in @($TaskSummary)) {
+        if (($LightTypes -contains ([string]$t.TaskType)) -and ([string]$t.JudgeMode -match "Full")) {
+            $StrongOnLight += $t
+        }
+    }
+    if (@($StrongOnLight).Count -gt 0) {
+        $Ids = (@($StrongOnLight | ForEach-Object { [string]$_.TaskId }) -join ", ")
+        $Recs += ("[!] " + @($StrongOnLight).Count + " light task(s) (id " + $Ids + ") used the Full/strong judge. A Work Mode = Review override or the review judge would cut their cost.")
+    }
+
+    # 4. One task dominating the run cost.
+    if ($TotalCost -gt 0) {
+        $Ranked = @(@($TaskSummary) | Sort-Object { [double]$_.EstimatedCostUsd } -Descending)
+        if (@($Ranked).Count -ge 2) {
+            $Top = $Ranked[0]
+            $TopPct = ([double]$Top.EstimatedCostUsd / $TotalCost) * 100.0
+            if ($TopPct -ge 50) {
+                $TopTitle = [string]$Top.TaskTitle
+                if ($TopTitle.Length -gt 40) { $TopTitle = $TopTitle.Substring(0, 37) + "..." }
+                $Recs += ("[i] Task " + [string]$Top.TaskId + " (" + $TopTitle + ") is " + ("{0:0}" -f $TopPct) + "% of this run - drop it on runs where you do not need it.")
+            }
+        }
+    }
+
+    # 5. Models with no configured price -> the totals understate real spend.
+    if ($null -ne $CostWarn -and @($CostWarn).Count -gt 0) {
+        $Models = (@(@($CostWarn) | ForEach-Object { [string]$_.Model }) | Sort-Object -Unique) -join ", "
+        $Recs += ("[!] No price configured for: " + $Models + ". The costs above UNDERSTATE real spend - add these to CostPer1MTokens in MultiLLM.config.json.")
+    }
+
+    if (@($Recs).Count -eq 0) {
+        $Recs += "[ok] Nothing stands out - costs look reasonable for this run."
+    }
+
+    return $Recs
+}
+
 function Update-MetricsTabFromRun {
     param([string]$RunFolderPath)
 
     $Lines = @()
+
+    # Cost recommendations first (v0.8.64): offline heuristics over this run + recent prior runs.
+    $RecLines = @(Get-CostRecommendations -RunFolderPath $RunFolderPath)
+    if (@($RecLines).Count -gt 0) {
+        $Lines += "COST RECOMMENDATIONS"
+        $Lines += "===================="
+        $Lines += $RecLines
+        $Lines += ""
+    }
 
     $TimingPath = Join-Path $RunFolderPath "timing_summary.json"
     $TimingText = Get-FileTextSafe -Path $TimingPath
@@ -7884,7 +8051,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.63" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.64" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
