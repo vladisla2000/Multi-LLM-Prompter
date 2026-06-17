@@ -4,8 +4,8 @@
 > This English file is the source of truth; keep both in sync on changes.
 
 Last updated: 2026-06-17
-Current version: **v0.8.72** (delivered, daily driver).
-File: `Multi-LLM-Prompter-v0_8_72.ps1` (~10,390 lines, ~430 KB).
+Current version: **v0.8.73** (delivered, daily driver).
+File: `Multi-LLM-Prompter-v0_8_73.ps1` (~10,410 lines, ~430 KB).
 
 Status: **daily driver.** The file is mechanically clean (0 parser errors, UTF-8 BOM,
 ASCII-only body, CRLF, balanced here-strings). Phase 2 (the Detected/Editable Tasks
@@ -28,7 +28,8 @@ estimates, sidebar + inspector rail, menus, personas, clarification gate, cost b
 -> v0.8.62 - v0.8.71 (Cost & Metrics tab built out: per-question Clarify Q+A; Cost by Role/Model +
    Task Summary + Timing as real DataGrids; offline cost recommendations; Detect-first rail; HTML cost
    report; verifier cost folded into totals; predicted-vs-actual cost saved + surfaced)
--> v0.8.72 (clear Estimated-vs-Actual cost rows; header-checkbox clip fix; author "VladSp + AI").
+-> v0.8.72 (clear Estimated-vs-Actual cost rows; header-checkbox clip fix; author "VladSp + AI")
+-> v0.8.73 (review fixes: rail "Pop-out Answer"; Improved Prompt no longer a dead end; plain preset labels).
 
 ## THIS SESSION (2026-06-17) - READ FIRST
 
@@ -40,7 +41,7 @@ This session resumed ownership at v0.8.71 and shipped **v0.8.72**.
 The docs/helper/harness work shipped via **PR #1** (`chore/docs-helper-harness`), which is now
 **MERGED to `main`** (merge commit `8fcde6d`). Everything since - v0.8.56 through v0.8.72 -
 is committed directly on `main` (one commit per version, per the versioning rule). Current `main`
-HEAD is the v0.8.72 commit.
+HEAD is the v0.8.73 commit.
 
 What shipped this session:
 - Re-synced all docs from the stale v0.8.2 handoff to the live code (this file, DEVELOPER.md, the
@@ -133,7 +134,7 @@ There is NO env var for the strong judge (by design, v0.8.0). $AnthropicModel_Ju
 
 ## 2. CURRENT FILE & PROJECT FOLDER
 
-`Multi-LLM-Prompter-v0_8_72.ps1` - ~10,390 lines. PS 5.1, ASCII-only source (Unicode only as
+`Multi-LLM-Prompter-v0_8_73.ps1` - ~10,410 lines. PS 5.1, ASCII-only source (Unicode only as
 `&#x...;` entities in XAML here-strings), UTF-8 BOM, CRLF, `cls` first. $LaunchGui = $true
 default; $false runs the classic CLI pipeline.
 
@@ -421,9 +422,20 @@ UIReady; timer stopped + child killed on Closing.
   28->30). (c) Added the app author **"VladSp + AI"** to the left-rail footer and the Help > About dialog.
   GUI/display only; frozen functions, judge contract, routing, and cost math (`Get-EstimatedCostUsd`, the
   prediction value) unchanged. Validated: parse 0 errors; XAML-load smoke (new cost fields + header
-  checkbox findable); harness PASS=48/0. STILL OPEN from the review (need fixes): #5 task-type display
-  consistency, #7 duplicate "Full Answer" rail-button-vs-tab label, #9 Improved Prompt dead-end/stale
-  content, #10 "SingleAD" preset jargon; plus the runtime re-check of #3/#4/#6 (time/counter/token).
+  checkbox findable); harness PASS=48/0.
+- v0.8.73: three more review fixes. (#7) The left-rail button that opens the answer in a separate window
+  was renamed "Full Answer" -> **"Pop-out Answer"** so it no longer collides with the inline "Full Answer"
+  tab. (#9) **Improved Prompt is no longer a dead end:** `Get-ImprovedPromptFromFinal` now treats the
+  pipeline's "No improved prompt..." sentinels (incl. "Judge skipped by routing policy") as empty, so the
+  button stays DISABLED when the judge produced nothing instead of opening a window with the sentinel/stale
+  text; `Show-ImprovedPromptWindow` guards the same sentinel as a backstop; the button tooltip now says it
+  is enabled only when the judge actually produced one. (#10) The preset combo labels are plain English -
+  **"Single task - AD script"** / **"Multi-task demo"** (the internal `$PromptPreset` keys SingleAD/
+  MultiTaskDemo and the CLI path are unchanged; only the GUI display strings + their 3 match sites moved
+  together). GUI/display + one parser guard; frozen functions, judge contract, routing, cost math unchanged.
+  Validated: parse 0 errors; XAML-load smoke (renamed button + new preset labels confirmed); harness
+  PASS=48/0. STILL OPEN from the review (need a live re-check on v0.8.73): #5 task-type display consistency
+  and #3/#4/#6 (time/counter/token) - v0.8.69-72 reworked much of that, so confirm which still occur.
 
 ---
 

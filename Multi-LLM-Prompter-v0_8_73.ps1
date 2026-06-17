@@ -1,9 +1,9 @@
 ﻿cls
 
 # ============================================================
-# Multi-LLM Prompter v0.8.72 - PowerShell 5.1 Backend
+# Multi-LLM Prompter v0.8.73 - PowerShell 5.1 Backend
 # ============================================================
-# Changes through v0.8.72:
+# Changes through v0.8.73:
 #   1. OpenAI uses Chat Completions endpoint and messages body.
 #   2. Claude Judge output split into:
 #      ---JUDGE_JSON---
@@ -537,6 +537,19 @@
 #       the Help > About dialog. GUI/display only; frozen functions, judge contract, routing, and cost
 #       math (Get-EstimatedCostUsd, the prediction value) unchanged.
 #
+#  109. v0.8.73: Three first-run fixes from the live review. (#7) The left-rail button that opens the
+#       answer in a separate window was renamed "Full Answer" -> "Pop-out Answer" so it no longer
+#       collides with the "Full Answer" tab (the tab is inline; the rail button pops out). (#9) The
+#       Improved Prompt button is no longer a dead end: Get-ImprovedPromptFromFinal now treats the
+#       pipeline's "No improved prompt..." sentinels (incl. "Judge skipped by routing policy") as empty,
+#       so the button stays DISABLED when the judge produced nothing, instead of opening a window with
+#       the sentinel/stale text; Show-ImprovedPromptWindow guards the same sentinel as a backstop, and
+#       the button tooltip now says it is enabled only when the judge actually produced one. (#10) The
+#       "SingleAD" / "MultiTaskDemo" preset combo labels are now plain English ("Single task - AD
+#       script" / "Multi-task demo"); the internal $PromptPreset keys (SingleAD/MultiTaskDemo) and the
+#       CLI path are unchanged - only the GUI display strings + their three match sites moved together.
+#       GUI/display + one parser guard; frozen functions, judge contract, routing, cost math unchanged.
+#
 #   OPENAI_API_KEY
 #   ANTHROPIC_API_KEY
 #
@@ -551,7 +564,7 @@
 
 # GUI mode: $true shows the WPF window. $false runs the pipeline directly (classic CLI mode).
 $LaunchGui   = $true
-$ToolVersion = "v0.8.72"
+$ToolVersion = "v0.8.73"
 
 # Prompt preset selector
 # Options: Custom / SingleAD / MultiTaskDemo
@@ -7501,7 +7514,15 @@ function Get-ImprovedPromptFromFinal {
         return ""
     }
 
-    return $FinalText.Substring($Idx + $Marker.Length).Trim()
+    $Result = $FinalText.Substring($Idx + $Marker.Length).Trim()
+    # The pipeline writes sentinels like "No improved prompt." / "No improved prompt. Judge skipped
+    # by routing policy." when there is nothing better. Treat those as empty so the Improved Prompt
+    # button stays disabled instead of opening a dead-end window (v0.8.73).
+    if ($Result.StartsWith("No improved prompt", [System.StringComparison]::OrdinalIgnoreCase)) {
+        return ""
+    }
+
+    return $Result
 }
 
 function Show-TaskDetailsWindow {
@@ -7677,8 +7698,9 @@ function Show-FinalAnswerWindow {
 function Show-ImprovedPromptWindow {
     param([string]$ImprovedText)
 
-    if ([string]::IsNullOrWhiteSpace($ImprovedText)) {
-        Add-GuiLog -Tag "WARN" -Message "No improved prompt available for this run."
+    if ([string]::IsNullOrWhiteSpace($ImprovedText) -or
+        $ImprovedText.StartsWith("No improved prompt", [System.StringComparison]::OrdinalIgnoreCase)) {
+        Add-GuiLog -Tag "INFO" -Message "No improved prompt for this run (the judge did not produce one)."
         return
     }
 
@@ -8387,7 +8409,7 @@ $GuiXamlTemplate = @"
                     ToolTip="Open the config file, set API keys, or change the output folder."/>
           </DockPanel>
           <TextBlock Text="Multi-LLM Prompter" Foreground="#9DC3E6" FontSize="11"/>
-          <TextBlock Name="TxtSideVersion" Text="v0.8.72" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
+          <TextBlock Name="TxtSideVersion" Text="v0.8.73" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
           <TextBlock Text="by VladSp + AI" Foreground="#6F9BC2" FontSize="10" Margin="0,1,0,0"/>
         </StackPanel>
 
@@ -8400,12 +8422,12 @@ $GuiXamlTemplate = @"
             <Border Background="#0A2138" BorderBrush="#1E4D7A" BorderThickness="1" CornerRadius="6" Padding="8,8" Margin="0,0,0,8">
               <StackPanel>
                 <TextBlock Text="RESULTS" Foreground="#7FA8CF" FontSize="10" FontWeight="SemiBold" Margin="2,0,0,6"/>
-                <Button Name="BtnCopyFinal" Style="{StaticResource RailButton}" Content="&#x1F4C4;  Full Answer" Height="30" Margin="0,0,0,4"
-                        Padding="12,0,0,0" ToolTip="Open the final answer in a separate window."/>
+                <Button Name="BtnCopyFinal" Style="{StaticResource RailButton}" Content="&#x1F4C4;  Pop-out Answer" Height="30" Margin="0,0,0,4"
+                        Padding="12,0,0,0" ToolTip="Open the final answer in a separate, resizable window (the same content as the Full Answer tab)."/>
                 <Button Name="BtnCopyQuick" Style="{StaticResource RailButton}" Content="&#x1F4CB;  Copy Full Answer" Height="30" Margin="0,0,0,4"
                         Padding="12,0,0,0" ToolTip="Copy the full answer to the clipboard."/>
                 <Button Name="BtnImproved" Style="{StaticResource RailButton}" Content="&#x1F4DD;  Improved Prompt" Height="30" Margin="0,0,0,4"
-                        IsEnabled="False" Padding="12,0,0,0" ToolTip="Open the improved version of your prompt produced by the judge (available after a run)."/>
+                        IsEnabled="False" Padding="12,0,0,0" ToolTip="Open the judge's improved version of your prompt. Enabled only when the judge actually produced one (stays disabled when the judge is skipped by routing)."/>
                 <Button Name="BtnOpenFolder" Style="{StaticResource RailButton}" Content="&#x1F4C1;  Open Folder" Height="30" Margin="0,0,0,4"
                         Padding="12,0,0,0" ToolTip="Open the run output folder in Explorer."/>
                 <Button Name="BtnHtmlReport" Style="{StaticResource RailButton}" Content="&#x1F310;  HTML Report" Height="30"
@@ -9168,8 +9190,8 @@ if ($null -ne $Script:Ctl_CmbTaskWorkModeOverride) {
 # ---- Initialize controls ----
 
 [void]$Script:Ctl_PresetCombo.Items.Add("Custom")
-[void]$Script:Ctl_PresetCombo.Items.Add("SingleAD")
-[void]$Script:Ctl_PresetCombo.Items.Add("MultiTaskDemo")
+[void]$Script:Ctl_PresetCombo.Items.Add("Single task - AD script")
+[void]$Script:Ctl_PresetCombo.Items.Add("Multi-task demo")
 $Script:Ctl_PresetCombo.SelectedIndex = 0
 
 [void]$Script:Ctl_SplitCombo.Items.Add("Heuristic")
@@ -9255,11 +9277,11 @@ if ($null -ne $Script:Ctl_ModelBCombo) { $Script:Ctl_ModelBCombo.Add_LostFocus($
 
 # Initialize prompt + preset combo from the script-level PromptPreset default.
 if ($PromptPreset -eq "SingleAD") {
-    $Script:Ctl_PresetCombo.SelectedItem = "SingleAD"
+    $Script:Ctl_PresetCombo.SelectedItem = "Single task - AD script"
     $Script:Ctl_PromptBox.Text = $SingleADPrompt
 }
 elseif ($PromptPreset -eq "MultiTaskDemo") {
-    $Script:Ctl_PresetCombo.SelectedItem = "MultiTaskDemo"
+    $Script:Ctl_PresetCombo.SelectedItem = "Multi-task demo"
     $Script:Ctl_PromptBox.Text = $MultiTaskDemoPrompt
 }
 else {
@@ -9409,13 +9431,13 @@ $Script:Ctl_PresetCombo.Add_SelectionChanged({
 
     $Selected = [string]$Script:Ctl_PresetCombo.SelectedItem
 
-    if ($Selected -eq "SingleAD") {
+    if ($Selected -eq "Single task - AD script") {
         $Script:Ctl_PromptBox.Text = $SingleADPrompt
-        Add-GuiLog -Tag "INFO" -Message "Preset loaded: SingleAD"
+        Add-GuiLog -Tag "INFO" -Message "Preset loaded: Single task - AD script"
     }
-    elseif ($Selected -eq "MultiTaskDemo") {
+    elseif ($Selected -eq "Multi-task demo") {
         $Script:Ctl_PromptBox.Text = $MultiTaskDemoPrompt
-        Add-GuiLog -Tag "INFO" -Message "Preset loaded: MultiTaskDemo"
+        Add-GuiLog -Tag "INFO" -Message "Preset loaded: Multi-task demo"
     }
 })
 

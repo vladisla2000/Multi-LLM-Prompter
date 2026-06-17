@@ -90,13 +90,18 @@ and per-task routing overrides are all DONE. Current state:
 - Left panel: started as a SaaS-style jump-nav (v0.8.19/v0.8.50: Runs/Prompts/Presets/Models/Settings
   shortcuts + a fake "Pro Plan" account card). v0.8.61 REWORKED it into a real ACTION RAIL because the
   jump-tabs read as page-nav but were just shortcuts to on-screen controls. Now: pinned top = Run / Stop
-  / Detect Tasks; scroll = New Run, Results (Full Answer / Copy / Improved Prompt / Run Folder),
-  Recent runs; pinned footer = Settings / Exit / app version. The redundant jump-nav buttons, the dead
-  `Set-SidebarActiveItem`, and the account card were removed. Recent-run rows are now clickable Buttons
-  (`BtnSideRecent1..4`, path in `.Tag`) that call `Open-PastRun` to load a past run's results - it reuses
-  the same folder-parameterized loaders as `Complete-GuiRun` (`Update-TasksGridFromSummary` /
-  `Update-MetricsTabFromRun` / `Update-RightRailFromRun` + final_answer.md + transcript) and refuses to
-  load mid-run (`$Script:IsBusy`).
+  / Detect Tasks; scroll = New Run, Results (Pop-out Answer / Copy Full Answer / Improved Prompt /
+  Open Folder / HTML Report), Recent runs; pinned footer = Settings / Exit / app version + author
+  "VladSp + AI". The redundant jump-nav buttons, the dead `Set-SidebarActiveItem`, and the account card
+  were removed. Recent-run rows are clickable Buttons (`BtnSideRecent1..4`, path in `.Tag`) that call
+  `Open-PastRun` to load a past run's results - it reuses the same folder-parameterized loaders as
+  `Complete-GuiRun` (`Update-TasksGridFromSummary` / `Update-MetricsTabFromRun` / `Update-RightRailFromRun`
+  + final_answer.md + transcript) and refuses to load mid-run (`$Script:IsBusy`).
+  - v0.8.73 naming: the window-opening button is "Pop-out Answer" (`BtnCopyFinal`, was "Full Answer")
+    so it does not collide with the inline "Full Answer" TAB. The Improved Prompt button stays disabled
+    when the judge produced nothing - `Get-ImprovedPromptFromFinal` treats "No improved prompt..."
+    sentinels as empty. Preset combo labels are plain English ("Single task - AD script" / "Multi-task
+    demo"); the internal `$PromptPreset` keys (SingleAD/MultiTaskDemo) are unchanged.
 - Right inspector rail (v0.8.20, widened through v0.8.42): Run Details / Cost / Token Usage /
   Latency / Run Health. Cost card has a configurable budget (`Output.CostBudgetUsd`, 0 = off,
   v0.8.29), predicted-vs-actual delta (v0.8.30), and approx ILS at rate 3.7 (v0.8.34/0.8.38).
